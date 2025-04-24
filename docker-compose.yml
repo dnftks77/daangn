@@ -1,0 +1,55 @@
+version: '3'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_DB_HOST=postgres
+      - VITE_DB_PORT=5432
+      - VITE_DB_USER=postgres
+      - VITE_DB_PASSWORD=postgres
+      - VITE_DB_NAME=daangn_db
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=daangn_db
+      - JWT_SECRET=0lq8etK+jzRIJdgPtsASY7gVpzYChrGo0B7+TvyhOqazTQ0qz+LiTSQ8SzIsOrSwAJ8yTC8q41mB0pcY1t5xuQ==
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=daangn_db
+    restart: always
+
+volumes:
+  postgres_data: 

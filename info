@@ -1,0 +1,46 @@
+info
+
+docker exec daangn-postgres-1 psql -U postgres -d daangn_db
+
+db접속예제 = docker exec daangn-postgres-1 psql -U postgres -d daangn_db -c "ALTER TABLE search_results ADD COLUMN IF NOT EXISTS sido TEXT;"                                 docker exec daangn-postgres-1 psql -U postgres -d daangn_db -c "ALTER TABLE search_results ADD COLUMN IF NOT EXISTS sido TEXT;"
+
+
+디지털기기 1 https://dnvefa72aowie.cloudfront.net/origin/category/202306/2c0811ac0c0f491039082d246cd41de636d58cd6e54368a0b012c386645d7c66.png
+생활가전 172 https://dnvefa72aowie.cloudfront.net/origin/category/202306/ff36d0fb3a3214a9cc86c79a84262e0d9e11b6d7289ed9aa75e40d0129764fac.png
+가구/인테리어 8 https://dnvefa72aowie.cloudfront.net/origin/category/202306/088e41c5973184228a2e4a50961ceb6fc366bb3eb11b1ee7c7cd66bcdf9c5529.png
+생활/주방 7 https://dnvefa72aowie.cloudfront.net/origin/category/202306/22a78937b8a8ccd0003ff7bb7c247b3863a5046f93a36b5341913ff2935efa43.png
+유아동 4 https://dnvefa72aowie.cloudfront.net/origin/category/202306/1975d6ba1725dfbe053daa450cec51757a39943104d57fbdd3fc5c7d8ae07605.png
+유아도서 173 https://dnvefa72aowie.cloudfront.net/origin/category/202306/987b21e9e02255cb310e4736b16e056d0bfc90c397e423e599b544bad203601e.png
+여성의류 5 https://dnvefa72aowie.cloudfront.net/origin/brand/202402/b99fb12bcc754a08e5a6f359861bafd80d38678a0c58521abdf314949f9c5e58.png
+여성잡화 31 https://dnvefa72aowie.cloudfront.net/origin/category/202306/23f6b89ba63da7cf8135e1063bde3811fb6499dc073585eea161b3727a42535e.png
+남성패션/잡화 14 https://dnvefa72aowie.cloudfront.net/origin/category/202306/38dd757c99863d1748f16292142cabfae9621622cc751faff49a79ed60c1c5e7.png
+뷰티/미용 6 https://dnvefa72aowie.cloudfront.net/origin/category/202306/1efa73a4e3b45610292223f44c42cbe3c7d93395a23f1134426a58d5639c179b.png
+스포츠/레저 3 https://dnvefa72aowie.cloudfront.net/origin/category/202306/6379c3ba41f03dc6e27796c5f106c8b20b57d79ddb3ba52440084fcd4d10d8dd.png
+취미/게임/음반 2 https://dnvefa72aowie.cloudfront.net/origin/category/202306/074da39b1114588ebc61447883f5f0059dd4abc16127f4250f559360f40eb0e2.png
+도서 9 https://dnvefa72aowie.cloudfront.net/origin/category/202306/0ce93f6b19d61169b955dae5422aa9f842933d8ccf35dc4c53cea8656a293e40.png
+티켓/교환권 304 https://dnvefa72aowie.cloudfront.net/origin/category/202306/631cb98e2c7cf46f1f2520f97b0ec2d30ce426c4c158ea3673f84e0aca088181.png
+가공식품 305 https://dnvefa72aowie.cloudfront.net/origin/category/202306/243b21522a5ff57863942f0ed84a04b3cc72f30ca9edda818f31238fc94066ee.png
+건강기능식품 483 https://dnvefa72aowie.cloudfront.net/origin/brand/202407/c22153f3cca52c69efb2b4c15e8e644ea7118b2f8c07d378ec8b75489c31cf46.png
+반려동물용품 16 https://dnvefa72aowie.cloudfront.net/origin/category/202306/763d2fb8809deb0a5ebd4ef2694ecb2d8b08f501ab185f7167d87a74a33aee10.png
+식물 139 https://dnvefa72aowie.cloudfront.net/origin/category/202306/248610f466d99a9a7cafa1c75a818a73bf850e05c7f7c205cbc60c7b7b16f876.png
+기타 중고물품 13 https://dnvefa72aowie.cloudfront.net/origin/category/202306/407b005b01de954b59aff9e21f729b3c30e3ae249acfb643401f235598dea8e3.png
+삽니다 32 https://dnvefa72aowie.cloudfront.net/origin/category/202306/6a729d83f311aa3e8ffa12c9757cfda323591a0018ce2d25da6bf604615e33c2.png
+
+
+docker restart daangn-backend-1
+
+
+1. db insert 할 때 동일한 날짜(시간은제외), 동일한 키워드 일 경우 중복이니 스킵(단 중복인데 rank 값이 더 클경우, rank 값만 업데이트)
+
+db접속예제 = docker exec daangn-postgres-1 psql -U postgres -d daangn_db -c "ALTER TABLE search_results ADD COLUMN IF NOT EXISTS sido TEXT;"
+
+
+
+curl -x dc.oxylabs.io:8000 -U "user-oxyclean_MwHOU:qkg0ADN1vxp6yca_pqx" https://ip.oxylabs.io/location 
+curl -x dc.oxylabs.io:8009 -U "user-oxyclean_MwHOU:qkg0ADN1vxp6yca_pqx" https://ip.oxylabs.io/location 
+curl -x dc.oxylabs.io:8000 -U 'user-oxyclean_MwHOU-country-JP:qkg0ADN1vxp6yca_pqx' https://ip.oxylabs.io/location
+
+
+curl -x http://52c4c4c031:lJoSu04g@154.83.44.51:4444 http://httpbin.org/ip  
+curl -v -x http://52c4c4c031:lJoSu04g@154.83.44.51:4444 http://httpbin.org/ip
+curl -v -x http://52c4c4c031:JoSu04g@154.83.44.51:4444 http://httpbin.org/ip

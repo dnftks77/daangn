@@ -1,0 +1,69 @@
+2025-04-23 07:21:52,434 - ERROR - config.py 파일을 가져올 수 없습니다. SECRET_KEY가 설정되어 있는지 확인하세요.
+2025-04-23 07:21:52,434 - INFO - 환경 변수에서 JWT 시크릿 키를 로드했습니다.
+2025-04-23 07:21:52,437 - DEBUG - registered 'bcrypt' handler: <class 'passlib.handlers.bcrypt.bcrypt'>
+2025-04-23 07:21:52,437 - ERROR - Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
+Traceback (most recent call last):
+  File "/Users/cdh/Downloads/daangn/backend/main.py", line 7, in <module>
+    from routes import auth, users, search
+  File "/Users/cdh/Downloads/daangn/backend/routes/__init__.py", line 2, in <module>
+    from . import auth, users, search
+  File "/Users/cdh/Downloads/daangn/backend/routes/auth.py", line 76, in <module>
+    @router.post("/token")
+     ~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/cdh/Downloads/daangn/supabase_env/lib/python3.13/site-packages/fastapi/routing.py", line 994, in decorator
+    self.add_api_route(
+    ~~~~~~~~~~~~~~~~~~^
+        path,
+        ^^^^^
+    ...<23 lines>...
+        generate_unique_id_function=generate_unique_id_function,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/cdh/Downloads/daangn/supabase_env/lib/python3.13/site-packages/fastapi/routing.py", line 933, in add_api_route
+    route = route_class(
+        self.prefix + path,
+    ...<24 lines>...
+        generate_unique_id_function=current_generate_unique_id,
+    )
+  File "/Users/cdh/Downloads/daangn/supabase_env/lib/python3.13/site-packages/fastapi/routing.py", line 554, in __init__
+    self.dependant = get_dependant(path=self.path_format, call=self.endpoint)
+                     ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cdh/Downloads/daangn/supabase_env/lib/python3.13/site-packages/fastapi/dependencies/utils.py", line 292, in get_dependant
+    sub_dependant = get_param_sub_dependant(
+        param_name=param_name,
+    ...<2 lines>...
+        security_scopes=security_scopes,
+    )
+  File "/Users/cdh/Downloads/daangn/supabase_env/lib/python3.13/site-packages/fastapi/dependencies/utils.py", line 126, in get_param_sub_dependant
+    return get_sub_dependant(
+        depends=depends,
+    ...<3 lines>...
+        security_scopes=security_scopes,
+    )
+  File "/Users/cdh/Downloads/daangn/supabase_env/lib/python3.13/site-packages/fastapi/dependencies/utils.py", line 162, in get_sub_dependant
+    sub_dependant = get_dependant(
+        path=path,
+    ...<3 lines>...
+        use_cache=depends.use_cache,
+    )
+  File "/Users/cdh/Downloads/daangn/supabase_env/lib/python3.13/site-packages/fastapi/dependencies/utils.py", line 285, in get_dependant
+    param_details = analyze_param(
+        param_name=param_name,
+    ...<2 lines>...
+        is_path_param=is_path_param,
+    )
+  File "/Users/cdh/Downloads/daangn/supabase_env/lib/python3.13/site-packages/fastapi/dependencies/utils.py", line 482, in analyze_param
+    ensure_multipart_is_installed()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/cdh/Downloads/daangn/supabase_env/lib/python3.13/site-packages/fastapi/dependencies/utils.py", line 115, in ensure_multipart_is_installed
+    raise RuntimeError(multipart_not_installed_error) from None
+RuntimeError: Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
