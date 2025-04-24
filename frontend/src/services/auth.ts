@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL;
+// 배포된 백엔드 API URL
+const API_URL = import.meta.env.VITE_API_URL || 'https://daangn-backend-917674470394.us-central1.run.app';
 
 /**
  * 사용자 로그인 함수
