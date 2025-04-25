@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 import uuid
+from pydantic import BaseModel
 
 # auth_utils에서 verify_token 함수를 임포트
 from auth_utils import verify_token
@@ -26,6 +27,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/token")
 db_service = DBService()
+
+# 사용자 등록 요청 모델
+class UserRegister(BaseModel):
+    username: str
+    password: str
 
 # 암호화 및 검증 함수
 def get_password_hash(password: str) -> str:
@@ -105,11 +111,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 # 사용자 등록 엔드포인트
 @router.post("/register")
-async def register(username: str = Body(...), password: str = Body(...)):
+async def register(user_data: UserRegister):
     session = db_service.get_session()
     try:
         # 이미 존재하는 아이디인지 확인
-        existing_user = session.query(User).filter(User.username == username).first()
+        existing_user = session.query(User).filter(User.username == user_data.username).first()
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -117,9 +123,9 @@ async def register(username: str = Body(...), password: str = Body(...)):
             )
         
         # 비밀번호 해시 및 사용자 생성
-        hashed_password = get_password_hash(password)
+        hashed_password = get_password_hash(user_data.password)
         new_user = User(
-            username=username,
+            username=user_data.username,
             password=hashed_password,
             created_at=datetime.now()
         )

@@ -28,12 +28,12 @@ if ENV == "production":
     DB_PASSWORD = os.getenv("DB_PASSWORD", "daangn-user-pw-2024")
     DB_NAME = os.getenv("DB_NAME", "daangn")
 else:
-    # 로컬 개발 환경 설정
-    DB_HOST = os.getenv("DB_HOST", "localhost")
-    DB_PORT = os.getenv("DB_PORT", "5432")
-    DB_USER = os.getenv("DB_USER", "postgres")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
-    DB_NAME = os.getenv("DB_NAME", "daangn_db")
+    # 개발 환경에서도 GCP Cloud SQL 사용
+    DB_HOST = "34.85.3.52"
+    DB_PORT = "5432"
+    DB_USER = "daangn-user"
+    DB_PASSWORD = "daangn-user-pw-2024"
+    DB_NAME = "daangn"
 
 # 데이터베이스 연결 문자열
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
