@@ -3,7 +3,7 @@ import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import pytz
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Text, Float, DateTime, Table, MetaData, Boolean, func, and_
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Text, Float, DateTime, Table, MetaData, Boolean, func, and_, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -16,18 +16,44 @@ logger = logging.getLogger(__name__)
 # 한국 시간대 설정
 KST = pytz.timezone('Asia/Seoul')
 
-# SQLAlchemy 설정
-DB_HOST = os.environ.get("DB_HOST", "localhost")
-DB_PORT = os.environ.get("DB_PORT", "5432")
-DB_USER = os.environ.get("DB_USER", "postgres")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "postgres")
-DB_NAME = os.environ.get("DB_NAME", "daangn_db")
+# 환경 변수 설정
+ENV = os.getenv("ENV", "development")
 
+# 환경에 따른 데이터베이스 연결 정보 설정
+if ENV == "production":
+    # GCP Cloud SQL 설정
+    DB_HOST = os.getenv("DB_HOST", "34.85.3.52")
+    DB_PORT = os.getenv("DB_PORT", "5432")
+    DB_USER = os.getenv("DB_USER", "daangn-user")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "daangn-user-pw-2024")
+    DB_NAME = os.getenv("DB_NAME", "daangn")
+else:
+    # 로컬 개발 환경 설정
+    DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_PORT = os.getenv("DB_PORT", "5432")
+    DB_USER = os.getenv("DB_USER", "postgres")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+    DB_NAME = os.getenv("DB_NAME", "daangn_db")
+
+# 데이터베이스 연결 문자열
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
+# SQLAlchemy 엔진 생성
 engine = create_engine(DATABASE_URL)
+
+# 세션 생성
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base 클래스 생성
 Base = declarative_base()
+
+# 데이터베이스 세션 가져오기
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # 모델 정의
 class User(Base):

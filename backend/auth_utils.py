@@ -24,16 +24,18 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 try:
     from config import SECRET_KEY
     if not SECRET_KEY:
-        raise ValueError("SECRET_KEY가 설정되지 않았습니다.")
-    logger.info("JWT 시크릿 키가 성공적으로 로드되었습니다.")
+        # 환경 변수에서 확인
+        SECRET_KEY = os.getenv("JWT_SECRET")
 except ImportError:
-    logger.error("config.py 파일을 가져올 수 없습니다. SECRET_KEY가 설정되어 있는지 확인하세요.")
-    # 환경 변수에서 시크릿 키 가져오기 (대체 방법)
+    # 환경 변수에서 시크릿 키 가져오기
     SECRET_KEY = os.getenv("JWT_SECRET")
-    if not SECRET_KEY:
-        logger.error("JWT_SECRET 환경 변수도 설정되지 않았습니다.")
-        raise ValueError("JWT 시크릿 키가 설정되지 않았습니다.")
-    logger.info("환경 변수에서 JWT 시크릿 키를 로드했습니다.")
+
+# 기본값 설정 (개발 및 배포 환경에서 항상 동작하도록)
+if not SECRET_KEY:
+    logger.warning("JWT_SECRET 환경 변수가 설정되지 않았습니다. 기본값을 사용합니다.")
+    SECRET_KEY = "daangn-default-jwt-secret-key-for-development-only"
+
+logger.info("JWT 시크릿 키 로드 완료")
 
 # 데이터베이스 서비스
 db_service = DBService()
@@ -75,19 +77,17 @@ async def verify_token(token: Optional[str] = Depends(oauth2_scheme)) -> Optiona
         
         # 추가 검증: 데이터베이스에서 사용자 존재 여부 확인 (선택적)
         # 이 부분은 성능을 위해 생략할 수도 있음
-        session = db_service.get_session()
         try:
-            user = session.query(User).filter(User.id == user_id).first()
-            if not user:
-                logger.warning(f"토큰의 사용자 ID({user_id})가 데이터베이스에 존재하지 않습니다.")
-                return None
-            # 데이터베이스의 관리자 권한 가져오기 (토큰 정보보다 우선)
-            is_admin = user.is_admin
-            logger.debug(f"사용자 ID({user_id})가 데이터베이스에 존재합니다. 관리자 권한: {is_admin}")
+            with db_service.get_session() as session:
+                user = session.query(User).filter(User.id == user_id).first()
+                if not user:
+                    logger.warning(f"토큰의 사용자 ID({user_id})가 데이터베이스에 존재하지 않습니다.")
+                    return None
+                # 데이터베이스의 관리자 권한 가져오기 (토큰 정보보다 우선)
+                is_admin = user.is_admin
+                logger.debug(f"사용자 ID({user_id})가 데이터베이스에 존재합니다. 관리자 권한: {is_admin}")
         except Exception as e:
             logger.error(f"데이터베이스 사용자 확인 중 오류: {str(e)}")
-        finally:
-            db_service.close_session()
         
         # 사용자 정보 반환
         user_data = {"id": user_id, "username": username, "is_admin": is_admin}
