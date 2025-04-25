@@ -25,13 +25,12 @@ app = FastAPI(title="당근마켓 백엔드 API")
 
 # CORS 설정
 if ENV == "production":
-    # 배포 환경 - Vercel 프론트엔드 URL
+    # 배포 환경 - Vercel 프론트엔드 URL과 모든 Vercel 앱 도메인 허용
     FRONTEND_URL = os.getenv("FRONTEND_URL", "https://daangn.vercel.app")
-    # Vercel 도메인 패턴 및 현재 사용 중인 도메인 추가
+    # Vercel 앱의 모든 도메인 허용
     allow_origins = [
         FRONTEND_URL,
         "https://daangn-mlli65rr1-ejrlaos-gmailcoms-projects.vercel.app",
-        "https://daangn-vercel.app",
         "https://*.vercel.app"  # 모든 Vercel 서브도메인 허용
     ]
 else:
