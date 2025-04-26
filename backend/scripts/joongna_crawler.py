@@ -22,33 +22,54 @@ logger = logging.getLogger(__name__)
 # 환경 변수 로드
 load_dotenv()
 
-# 데이터베이스 접속 정보
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "daangn_db")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+# 외부 데이터베이스 접속 정보
+EXTERNAL_DB_HOST = os.getenv("EXTERNAL_DB_HOST", "34.85.3.52")
+EXTERNAL_DB_PORT = os.getenv("EXTERNAL_DB_PORT", "5432")
+EXTERNAL_DB_NAME = os.getenv("EXTERNAL_DB_NAME", "daangn")
+EXTERNAL_DB_USER = os.getenv("EXTERNAL_DB_USER", "postgres")
+EXTERNAL_DB_PASSWORD = os.getenv("EXTERNAL_DB_PASSWORD", "Daangn2024!")
 
-def get_db_connection():
+# 로컬 데이터베이스 접속 정보
+LOCAL_DB_HOST = os.getenv("DB_HOST", "localhost")
+LOCAL_DB_PORT = os.getenv("DB_PORT", "5433")
+LOCAL_DB_NAME = os.getenv("DB_NAME", "daangn_db")
+LOCAL_DB_USER = os.getenv("DB_USER", "postgres")
+LOCAL_DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+
+def get_db_connection(is_external=True):
     """PostgreSQL 데이터베이스 연결을 반환합니다."""
     try:
-        connection = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
+        if is_external:
+            connection = psycopg2.connect(
+                host=EXTERNAL_DB_HOST,
+                port=EXTERNAL_DB_PORT,
+                database=EXTERNAL_DB_NAME,
+                user=EXTERNAL_DB_USER,
+                password=EXTERNAL_DB_PASSWORD
+            )
+            logger.info("외부 데이터베이스에 연결했습니다.")
+        else:
+            connection = psycopg2.connect(
+                host=LOCAL_DB_HOST,
+                port=LOCAL_DB_PORT,
+                database=LOCAL_DB_NAME,
+                user=LOCAL_DB_USER,
+                password=LOCAL_DB_PASSWORD
+            )
+            logger.info("로컬 데이터베이스에 연결했습니다.")
         return connection
     except Exception as e:
-        logger.error(f"데이터베이스 연결 오류: {e}")
+        db_type = "외부" if is_external else "로컬"
+        logger.error(f"{db_type} 데이터베이스 연결 오류: {e}")
         return None
 
-def create_table_if_not_exists():
+def create_table_if_not_exists(is_external=True):
     """joongna_rank 테이블이 없으면 생성합니다."""
-    connection = get_db_connection()
+    connection = get_db_connection(is_external)
     if not connection:
         return False
+    
+    db_type = "외부" if is_external else "로컬"
     
     try:
         cursor = connection.cursor()
@@ -74,13 +95,13 @@ def create_table_if_not_exists():
             );
             """)
             
-            logger.info("joongna_rank 테이블을 생성했습니다.")
+            logger.info(f"{db_type} 데이터베이스에 joongna_rank 테이블을 생성했습니다.")
         
         connection.commit()
         return True
     
     except Exception as e:
-        logger.error(f"테이블 생성 오류: {e}")
+        logger.error(f"{db_type} 데이터베이스 테이블 생성 오류: {e}")
         connection.rollback()
         return False
     
@@ -162,7 +183,7 @@ def joongna_crawl():
         if driver:
             driver.quit()
 
-def save_rankings_to_db(rankings):
+def save_rankings_to_db(rankings, is_external=True):
     """크롤링한 순위 데이터를 데이터베이스에 저장합니다.
     중복 데이터(동일 날짜, 동일 키워드)는 스킵하거나 순위가 더 높은 경우에만 업데이트합니다.
     """
@@ -170,9 +191,11 @@ def save_rankings_to_db(rankings):
         logger.warning("저장할 순위 데이터가 없습니다.")
         return False
     
-    connection = get_db_connection()
+    connection = get_db_connection(is_external)
     if not connection:
         return False
+    
+    db_type = "외부" if is_external else "로컬"
     
     try:
         cursor = connection.cursor()
@@ -206,10 +229,10 @@ def save_rankings_to_db(rankings):
                         (rank_data["rank"], record_id)
                     )
                     updated_count += 1
-                    logger.info(f"레코드 업데이트: 키워드 '{rank_data['keyword']}', 순위 {current_rank} -> {rank_data['rank']}")
+                    logger.info(f"{db_type} DB: 레코드 업데이트: 키워드 '{rank_data['keyword']}', 순위 {current_rank} -> {rank_data['rank']}")
                 else:
                     skipped_count += 1
-                    logger.info(f"중복 레코드 스킵: 키워드 '{rank_data['keyword']}', 현재 순위 {current_rank}")
+                    logger.info(f"{db_type} DB: 중복 레코드 스킵: 키워드 '{rank_data['keyword']}', 현재 순위 {current_rank}")
             else:
                 # 새 레코드 삽입
                 cursor.execute(
@@ -217,17 +240,21 @@ def save_rankings_to_db(rankings):
                     (rank_data["rank"], rank_data["keyword"])
                 )
                 inserted_count += 1
-                logger.info(f"새 레코드 삽입: 키워드 '{rank_data['keyword']}', 순위 {rank_data['rank']}")
+                logger.info(f"{db_type} DB: 새 레코드 삽입: 키워드 '{rank_data['keyword']}', 순위 {rank_data['rank']}")
         
-        # 정리 함수 실행
-        cursor.execute("SELECT cleanup_joongna_rank()")
+        # 정리 함수 실행 시도
+        try:
+            cursor.execute("SELECT cleanup_joongna_rank()")
+            logger.info(f"{db_type} DB: cleanup_joongna_rank 함수 실행 완료")
+        except Exception as e:
+            logger.warning(f"{db_type} DB: cleanup_joongna_rank 함수 실행 오류 (무시하고 진행): {e}")
         
         connection.commit()
-        logger.info(f"순위 데이터 저장 완료: {inserted_count}개 삽입, {updated_count}개 업데이트, {skipped_count}개 스킵")
+        logger.info(f"{db_type} DB 저장 완료: {inserted_count}개 삽입, {updated_count}개 업데이트, {skipped_count}개 스킵")
         return True
     
     except Exception as e:
-        logger.error(f"데이터베이스 저장 오류: {e}")
+        logger.error(f"{db_type} DB 저장 오류: {e}")
         connection.rollback()
         return False
     
@@ -237,23 +264,35 @@ def save_rankings_to_db(rankings):
 
 def main():
     """메인 함수: 크롤링 및 DB 저장을 실행합니다."""
-    # 테이블 생성 확인
-    if not create_table_if_not_exists():
-        logger.error("테이블 생성 실패, 종료합니다.")
-        return
+    # 외부 DB 테이블 생성 확인
+    if not create_table_if_not_exists(is_external=True):
+        logger.error("외부 DB 테이블 생성 실패, 계속 진행합니다.")
+    
+    # 로컬 DB 테이블 생성 확인
+    if not create_table_if_not_exists(is_external=False):
+        logger.error("로컬 DB 테이블 생성 실패, 계속 진행합니다.")
     
     # 크롤링 실행
     rankings = joongna_crawl()
     
-    # DB 저장
-    if rankings:
-        success = save_rankings_to_db(rankings)
-        if success:
-            logger.info("중고나라 인기 검색어 크롤링 및 저장이 완료되었습니다.")
-        else:
-            logger.error("중고나라 인기 검색어 저장에 실패했습니다.")
-    else:
+    if not rankings:
         logger.error("중고나라 인기 검색어 크롤링에 실패했습니다.")
+        return
+    
+    # 외부 DB 저장
+    external_success = save_rankings_to_db(rankings, is_external=True)
+    
+    # 로컬 DB 저장
+    local_success = save_rankings_to_db(rankings, is_external=False)
+    
+    if external_success and local_success:
+        logger.info("중고나라 인기 검색어 크롤링 및 양쪽 DB 저장이 완료되었습니다.")
+    elif external_success:
+        logger.warning("중고나라 인기 검색어 외부 DB 저장만 성공했습니다.")
+    elif local_success:
+        logger.warning("중고나라 인기 검색어 로컬 DB 저장만 성공했습니다.")
+    else:
+        logger.error("중고나라 인기 검색어 양쪽 DB 저장 모두 실패했습니다.")
 
 if __name__ == "__main__":
     main() 

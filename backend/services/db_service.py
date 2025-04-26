@@ -24,16 +24,16 @@ if ENV == "production":
     # GCP Cloud SQL 설정
     DB_HOST = os.getenv("DB_HOST", "34.85.3.52")
     DB_PORT = os.getenv("DB_PORT", "5432")
-    DB_USER = os.getenv("DB_USER", "daangn-user")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "daangn-user-pw-2024")
+    DB_USER = os.getenv("DB_USER", "postgres")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "Daangn2024!")  # 새로 설정한 비밀번호
     DB_NAME = os.getenv("DB_NAME", "daangn")
 else:
-    # 개발 환경에서도 GCP Cloud SQL 사용
-    DB_HOST = "34.85.3.52"
-    DB_PORT = "5432"
-    DB_USER = "daangn-user"
-    DB_PASSWORD = "daangn-user-pw-2024"
-    DB_NAME = "daangn"
+    # 로컬 개발 환경 설정
+    DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_PORT = os.getenv("DB_PORT", "5433")
+    DB_USER = os.getenv("DB_USER", "postgres")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+    DB_NAME = os.getenv("DB_NAME", "daangn_db")
 
 # 데이터베이스 연결 문자열
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
@@ -46,6 +46,16 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Base 클래스 생성
 Base = declarative_base()
+
+# 테이블 생성 함수
+def create_tables():
+    try:
+        logger.info("데이터베이스 테이블 생성 시작...")
+        Base.metadata.create_all(engine)
+        logger.info("데이터베이스 테이블 생성 완료!")
+    except Exception as e:
+        logger.error(f"테이블 생성 중 오류 발생: {str(e)}")
+        raise
 
 # 데이터베이스 세션 가져오기
 def get_db():
@@ -85,7 +95,6 @@ class SearchResult(Base):
     link = Column(Text, nullable=False)
     thumbnail = Column(Text, nullable=True)
     location = Column(Text, nullable=True)
-    sido = Column(Text, nullable=True)
     dong_id = Column(String, nullable=True)
     price = Column(Float, nullable=True)
     status = Column(Text, nullable=True)
@@ -224,21 +233,7 @@ class DBService:
                     
                     # 위치 정보 처리
                     location = item.get("location", "")
-                    sido = None
                     dong_id = item.get("dong_id", "")
-                    
-                    # place_list 테이블에서 해당 지역(동)에 매칭되는 시도(sido) 정보 조회
-                    if location:
-                        # 동 이름과 일치하는 place_list 레코드 조회
-                        place = session.query(PlaceList).filter(
-                            PlaceList.dong == location
-                        ).first()
-                        
-                        if place and place.sido:
-                            sido = place.sido
-                            logger.debug(f"지역 '{location}'에 대한 시도 정보 '{sido}' 조회됨")
-                        else:
-                            logger.debug(f"지역 '{location}'에 대한 시도 정보를 찾을 수 없음")
                     
                     # 동일한 link를 가진 기존 항목 검색
                     existing_result = session.query(SearchResult).filter(
@@ -251,7 +246,6 @@ class DBService:
                         existing_result.price = self._parse_price(item.get("price"))
                         existing_result.thumbnail = item.get("thumbnail")
                         existing_result.location = location
-                        existing_result.sido = sido  # sido 정보 추가
                         existing_result.dong_id = dong_id  # 지역 ID 추가
                         existing_result.status = item.get("status")
                         existing_result.content = item.get("content")
@@ -277,7 +271,6 @@ class DBService:
                             price=self._parse_price(item.get("price")),
                             thumbnail=item.get("thumbnail"),
                             location=location,
-                            sido=sido,  # sido 정보 추가
                             dong_id=dong_id,  # 지역 ID 추가
                             status=item.get("status"),
                             content=item.get("content"),
@@ -391,7 +384,11 @@ class DBService:
                                page_size: int = 20, 
                                sort_by: str = "created_at_desc", 
                                only_available: bool = False,
-                               category_id: Optional[List[int]] = None) -> Dict:
+                               category_id: Optional[List[int]] = None,
+                               sido: Optional[str] = None,
+                               sigungu1: Optional[str] = None,
+                               sigungu2: Optional[str] = None,
+                               dong: Optional[str] = None) -> Dict:
         """특정 검색 요청에 대한 검색 결과를 가져옵니다 (페이징, 정렬, 필터 지원)"""
         try:
             session = self.get_session()
@@ -425,9 +422,8 @@ class DBService:
             latest_search_time = search_request.created_at
             if latest_search_time.tzinfo is None:
                 latest_search_time = pytz.UTC.localize(latest_search_time).astimezone(KST)
-            logger.info(f"가장 최근 검색 시간: {latest_search_time}, 이전 검색 존재 여부: {has_previous_search}")
             
-            # 카테고리 URL과 ID 간의 매핑
+            # 카테고리 필터링 처리
             category_url_to_id = {
                 "https://dnvefa72aowie.cloudfront.net/origin/category/202306/2c0811ac0c0f491039082d246cd41de636d58cd6e54368a0b012c386645d7c66.png": 1,  # 디지털기기
                 "https://dnvefa72aowie.cloudfront.net/origin/category/202306/ff36d0fb3a3214a9cc86c79a84262e0d9e11b6d7289ed9aa75e40d0129764fac.png": 172,  # 생활가전
@@ -451,56 +447,76 @@ class DBService:
                 "https://dnvefa72aowie.cloudfront.net/origin/category/202306/6a729d83f311aa3e8ffa12c9757cfda323591a0018ce2d25da6bf604615e33c2.png": 32,  # 삽니다
             }
             
-            # ID와 URL 간의 매핑도 준비 (반대 방향)
+            # ID를 URL로 변환하는 역매핑
             category_id_to_url = {v: k for k, v in category_url_to_id.items()}
             
-            # 기본 쿼리 생성
+            # 초기 쿼리 설정
             base_query = session.query(SearchResult).filter(
                 SearchResult.query == query
             )
             
-            # 거래 가능 필터 적용
+            # 상태 필터링 (거래 중인 상품만)
             if only_available:
                 base_query = base_query.filter(
-                    (SearchResult.status.is_(None)) | 
-                    (SearchResult.status == '') | 
-                    (SearchResult.status == 'Ongoing')
+                    SearchResult.status == 'Ongoing'
                 )
             
-            # 카테고리 필터 적용
+            # 카테고리 필터링
             if category_id and len(category_id) > 0:
-                valid_category_urls = []
-                for cat_id in category_id:
-                    if cat_id in category_id_to_url:
-                        valid_category_urls.append(category_id_to_url[cat_id])
-                    else:
-                        logger.warning(f"알 수 없는 카테고리 ID: {cat_id}")
-                
-                if valid_category_urls:
-                    # 여러 카테고리 중 하나라도 포함된 경우 필터링 (OR 조건)
+                # ID를 URL로 변환하여 필터링
+                category_urls = [category_id_to_url.get(cat_id) for cat_id in category_id if cat_id in category_id_to_url]
+                if category_urls:
                     base_query = base_query.filter(
-                        SearchResult.category.in_(valid_category_urls)
+                        SearchResult.category.in_(category_urls)
                     )
-                    logger.info(f"카테고리 필터 적용: {len(valid_category_urls)}개 카테고리, IDs: {category_id}")
+            
+            # 지역 필터링 추가
+            # 동/읍/면/동네 ID를 찾아서 필터링
+            if sido or sigungu1 or sigungu2 or dong:
+                # 해당 지역 정보에 맞는 동 ID 조회
+                location_query = session.query(PlaceList)
+                
+                if sido:
+                    location_query = location_query.filter(PlaceList.place_title_original.like(f"{sido}%"))
+                
+                if sigungu1:
+                    location_query = location_query.filter(PlaceList.place_title_original.like(f"%{sigungu1}%"))
+                
+                if sigungu2:
+                    location_query = location_query.filter(PlaceList.place_title_original.like(f"%{sigungu2}%"))
+                
+                if dong:
+                    location_query = location_query.filter(PlaceList.place_title_original.like(f"%{dong}"))
+                
+                # 조회된 dong_id 목록으로 검색 결과 필터링
+                matching_places = location_query.all()
+                if matching_places:
+                    dong_ids = [place.dong_id for place in matching_places]
+                    base_query = base_query.filter(SearchResult.dong_id.in_(dong_ids))
+                else:
+                    # 일치하는 지역이 없으면 빈 결과 반환
+                    return {
+                        "items": [],
+                        "total": 0,
+                        "page": page,
+                        "page_size": page_size,
+                        "pages": 0,
+                        "has_next": False,
+                        "has_prev": False
+                    }
             
             # 정렬 적용
             if sort_by == "price_asc":
-                # 가격이 null인 경우를 처리 (가격이 null인 경우 가장 마지막에)
-                base_query = base_query.order_by(
-                    SearchResult.price.is_(None),  # NULL 값 처리
-                    SearchResult.price.asc()
-                )
-            else:  # 기본값은 created_at_desc
-                # 기본적으로 최신순으로 정렬 (created_at_origin으로)
-                base_query = base_query.order_by(
-                    SearchResult.created_at_origin.desc()
-                )
+                base_query = base_query.order_by(SearchResult.price.asc(), SearchResult.created_at_origin.desc())
+            else:  # 기본값: created_at_desc
+                base_query = base_query.order_by(SearchResult.created_at_origin.desc())
             
-            # 전체 개수 계산
+            # 전체 카운트 계산 (페이징 정보용)
             total_count = base_query.count()
             
-            # 카테고리별 개수 계산 (필터링 전의 모든 결과에 대해)
-            category_counts = {}
+            # 카테고리별 개수 계산
+            category_counts = {cat_id: 0 for cat_id in [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 16, 31, 32, 139, 172, 173, 304, 305, 483]}
+            
             # category_id 목록
             category_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 16, 31, 32, 139, 172, 173, 304, 305, 483]
             
@@ -564,7 +580,272 @@ class DBService:
         finally:
             self.close_session()
     
-    async def get_place_params(self, id_min: int = 1, id_max: int = 10000) -> List[Dict]:
+    def _get_location_info(self, dong_id: int) -> Dict[str, Optional[str]]:
+        """dong_id로 place_list 테이블에서 지역 정보를 조회하고, place_title_original을 분리하여 반환합니다"""
+        try:
+            session = self.get_session()
+            
+            # dong_id로 place_list 조회
+            place_info = session.query(PlaceList).filter(
+                PlaceList.dong_id == dong_id
+            ).first()
+            
+            if not place_info or not place_info.place_title_original:
+                return {
+                    "place_title_original": None,
+                    "sido": None,
+                    "sigungu1": None,
+                    "sigungu2": None,
+                    "dong": None
+                }
+            
+            # place_title_original 값을 띄어쓰기로 분리
+            parts = place_info.place_title_original.split()
+            result = {
+                "place_title_original": place_info.place_title_original,
+                "sido": None,
+                "sigungu1": None,
+                "sigungu2": None,
+                "dong": None
+            }
+            
+            # 분리된 부분에 따라 값 할당
+            if len(parts) >= 1:
+                result["sido"] = parts[0]
+            if len(parts) >= 2:
+                result["sigungu1"] = parts[1]
+            if len(parts) >= 4:  # 3개의 띄어쓰기로 구분된 경우 (예: "충청북도 청주시 상당구 용담동")
+                result["sigungu2"] = parts[2]
+                result["dong"] = parts[3]
+            elif len(parts) >= 3:  # 2개의 띄어쓰기로 구분된 경우 (예: "서울특별시 종로구 부암동")
+                result["dong"] = parts[2]
+            
+            return result
+        except Exception as e:
+            logger.error(f"지역 정보 조회 중 오류 발생: {str(e)}")
+            return {
+                "place_title_original": None,
+                "sido": None,
+                "sigungu1": None,
+                "sigungu2": None,
+                "dong": None
+            }
+        finally:
+            if 'session' in locals():
+                self.close_session()
+    
+    def _search_result_to_dict(self, result: SearchResult) -> Dict[str, Any]:
+        """SearchResult 객체를 딕셔너리로 변환하고 지역 정보를 추가합니다"""
+        result_dict = {
+            "id": str(result.id),
+            "query": result.query,
+            "title": result.title,
+            "link": result.link,
+            "thumbnail": result.thumbnail,
+            "location": result.location,
+            "dong_id": result.dong_id,
+            "price": result.price,
+            "status": result.status,
+            "content": result.content,
+            "nickname": result.nickname,
+            "nickname_id": result.nickname_id,
+            "category": result.category,
+            "created_at": result.created_at.isoformat() if result.created_at else None,
+            "updated_at": result.updated_at.isoformat() if result.updated_at else None,
+            "created_at_origin": result.created_at_origin.isoformat() if result.created_at_origin else None,
+            "boosted_at": result.boosted_at.isoformat() if result.boosted_at else None,
+            "is_new": False  # 기본값으로 False 설정, 새 상품 여부는 나중에 업데이트
+        }
+        
+        # dong_id가 있는 경우 지역 정보 추가
+        if result.dong_id:
+            location_info = self._get_location_info(result.dong_id)
+            result_dict.update({
+                "place_title_original": location_info["place_title_original"],
+                "sido": location_info["sido"],
+                "sigungu1": location_info["sigungu1"],
+                "sigungu2": location_info["sigungu2"],
+                "dong": location_info["dong"]
+            })
+        
+        return result_dict
+    
+    def _parse_datetime(self, date_string: str) -> Optional[datetime]:
+        """문자열을 datetime 객체로 변환"""
+        if not date_string:
+            return None
+        
+        try:
+            # ISO 8601 형식 파싱 (2023-04-25T14:30:00+09:00)
+            dt = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+            return dt
+        except (ValueError, TypeError):
+            try:
+                # 다른 일반적인 형식 시도
+                dt = datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
+                return dt
+            except (ValueError, TypeError):
+                return None
+    
+    def _parse_price(self, price) -> Optional[float]:
+        """가격 정보를 숫자로 변환"""
+        if price is None:
+            return None
+        
+        if isinstance(price, (int, float)):
+            return float(price)
+        
+        if isinstance(price, str):
+            # 문자열에서 숫자만 추출
+            try:
+                # 콤마와 원 기호 제거
+                clean_price = price.replace(',', '').replace('원', '').strip()
+                return float(clean_price)
+            except (ValueError, TypeError):
+                return None
+        
+        return None
+    
+    async def get_latest_search_time(self, query: str) -> Optional[datetime]:
+        """주어진 쿼리에 대한 가장 최근 검색 시간을 반환합니다 (실제 크롤링된 검색만 고려)"""
+        try:
+            session = self.get_session()
+            
+            # 쿼리로 가장 최근 검색 요청 조회 (is_crawled=True인 경우만)
+            latest_search = session.query(SearchRequest).filter(
+                SearchRequest.query == query,
+                SearchRequest.is_crawled == True
+            ).order_by(
+                SearchRequest.created_at.desc()
+            ).first()
+            
+            if latest_search and latest_search.created_at:
+                # 시간을 KST로 변환
+                created_at = latest_search.created_at
+                if created_at.tzinfo is None:
+                    created_at = pytz.UTC.localize(created_at).astimezone(KST)
+                else:
+                    created_at = created_at.astimezone(KST)
+                
+                logger.info(f"쿼리 '{query}'의 가장 최근 크롤링 시간: {created_at}")
+                return created_at
+            
+            logger.info(f"쿼리 '{query}'에 대한 크롤링 기록이 없습니다.")
+            return None
+            
+        except Exception as e:
+            logger.error(f"최근 검색 시간 조회 중 오류 발생: {str(e)}")
+            return None
+        finally:
+            self.close_session()
+    
+    async def get_latest_search_request_by_query(self, query: str) -> Optional[Dict]:
+        """모든 사용자의 검색 이력에서 특정 쿼리에 대한 가장 최근 검색 요청을 반환합니다 (실제 크롤링된 검색만 고려)"""
+        try:
+            session = self.get_session()
+            
+            # 쿼리로 가장 최근 검색 요청 조회 (모든 사용자, is_crawled=True인 경우만)
+            latest_search = session.query(SearchRequest).filter(
+                SearchRequest.query == query,
+                SearchRequest.is_crawled == True
+            ).order_by(
+                SearchRequest.created_at.desc()
+            ).first()
+            
+            if latest_search:
+                # 시간을 KST로 변환
+                created_at = latest_search.created_at
+                if created_at.tzinfo is None:
+                    created_at = pytz.UTC.localize(created_at).astimezone(KST)
+                else:
+                    created_at = created_at.astimezone(KST)
+                
+                result = {
+                    "id": str(latest_search.id),
+                    "user_id": str(latest_search.user_id) if latest_search.user_id else None,
+                    "query": latest_search.query,
+                    "location": latest_search.location,
+                    "created_at": created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "is_crawled": latest_search.is_crawled
+                }
+                
+                logger.info(f"쿼리 '{query}'에 대한 가장 최근 크롤링 요청을 찾았습니다. ID: {result['id']}")
+                return result
+            
+            logger.info(f"쿼리 '{query}'에 대한 크롤링 요청이 없습니다.")
+            return None
+            
+        except Exception as e:
+            logger.error(f"최근 검색 요청 조회 중 오류 발생: {str(e)}")
+            return None
+        finally:
+            self.close_session()
+    
+    async def get_search_results_by_query(self, query: str) -> List[Dict]:
+        """검색어로 직접 검색 결과를 조회합니다. (search_request_id 없이)"""
+        try:
+            session = self.get_session()
+            
+            # 로깅을 통한 디버깅 추가
+            logger.info(f"query='{query}'로 직접 검색 결과 조회 시작")
+            
+            # search_results 테이블에서 해당 query와 일치하는 모든 결과 조회
+            results = session.query(SearchResult).filter(
+                SearchResult.query == query
+            ).order_by(
+                SearchResult.created_at_origin.desc()
+            ).limit(100).all()
+            
+            # 결과 변환
+            search_results = []
+            for item in results:
+                result_dict = self._search_result_to_dict(item)
+                
+                # 카테고리 URL과 ID 매핑 (카테고리 URL이 있는 경우)
+                category_url_to_id = {
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/2c0811ac0c0f491039082d246cd41de636d58cd6e54368a0b012c386645d7c66.png": 1,  # 디지털기기
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/ff36d0fb3a3214a9cc86c79a84262e0d9e11b6d7289ed9aa75e40d0129764fac.png": 172,  # 생활가전
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/088e41c5973184228a2e4a50961ceb6fc366bb3eb11b1ee7c7cd66bcdf9c5529.png": 8,  # 가구/인테리어
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/22a78937b8a8ccd0003ff7bb7c247b3863a5046f93a36b5341913ff2935efa43.png": 7,  # 생활/주방
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/1975d6ba1725dfbe053daa450cec51757a39943104d57fbdd3fc5c7d8ae07605.png": 4,  # 유아동
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/987b21e9e02255cb310e4736b16e056d0bfc90c397e423e599b544bad203601e.png": 173,  # 유아도서
+                    "https://dnvefa72aowie.cloudfront.net/origin/brand/202402/b99fb12bcc754a08e5a6f359861bafd80d38678a0c58521abdf314949f9c5e58.png": 5,  # 여성의류
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/23f6b89ba63da7cf8135e1063bde3811fb6499dc073585eea161b3727a42535e.png": 31,  # 여성잡화
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/38dd757c99863d1748f16292142cabfae9621622cc751faff49a79ed60c1c5e7.png": 14,  # 남성패션/잡화
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/1efa73a4e3b45610292223f44c42cbe3c7d93395a23f1134426a58d5639c179b.png": 6,  # 뷰티/미용
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/6379c3ba41f03dc6e27796c5f106c8b20b57d79ddb3ba52440084fcd4d10d8dd.png": 3,  # 스포츠/레저
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/074da39b1114588ebc61447883f5f0059dd4abc16127f4250f559360f40eb0e2.png": 2,  # 취미/게임/음반
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/0ce93f6b19d61169b955dae5422aa9f842933d8ccf35dc4c53cea8656a293e40.png": 9,  # 도서
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/631cb98e2c7cf46f1f2520f97b0ec2d30ce426c4c158ea3673f84e0aca088181.png": 304,  # 티켓/교환권
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/243b21522a5ff57863942f0ed84a04b3cc72f30ca9edda818f31238fc94066ee.png": 305,  # 가공식품
+                    "https://dnvefa72aowie.cloudfront.net/origin/brand/202407/c22153f3cca52c69efb2b4c15e8e644ea7118b2f8c07d378ec8b75489c31cf46.png": 483,  # 건강기능식품
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/763d2fb8809deb0a5ebd4ef2694ecb2d8b08f501ab185f7167d87a74a33aee10.png": 16,  # 반려동물용품
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/248610f466d99a9a7cafa1c75a818a73bf850e05c7f7c205cbc60c7b7b16f876.png": 139,  # 식물
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/407b005b01de954b59aff9e21f729b3c30e3ae249acfb643401f235598dea8e3.png": 13,  # 기타 중고물품
+                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/6a729d83f311aa3e8ffa12c9757cfda323591a0018ce2d25da6bf604615e33c2.png": 32,  # 삽니다
+                }
+                
+                # 카테고리 URL을 ID로 변환
+                category_url = item.category
+                if category_url in category_url_to_id:
+                    result_dict["category_id"] = category_url_to_id[category_url]
+                else:
+                    result_dict["category_id"] = None
+                    
+                search_results.append(result_dict)
+            
+            logger.info(f"쿼리 '{query}'에 대해 {len(search_results)}개의 결과를 직접 조회했습니다.")
+            return search_results
+            
+        except Exception as e:
+            logger.error(f"직접 검색 결과 조회 중 오류 발생: {str(e)}")
+            import traceback
+            logger.error(f"상세 오류 정보: {traceback.format_exc()}")
+            return []
+        finally:
+            self.close_session()
+    
+    async def get_place_params(self, id_min: int = 1, id_max: int = 3000) -> List[Dict]:
         """place_list 테이블에서 from_area가 null이 아니고 ID가 지정된 범위 내인 레코드의 param 값을 가져옵니다"""
         try:
             session = self.get_session()
@@ -846,189 +1127,6 @@ class DBService:
             
         except Exception as e:
             logger.error(f"오류 프로세스 조회 중 오류 발생: {str(e)}")
-            return []
-        finally:
-            self.close_session()
-    
-    def _parse_datetime(self, date_string: str) -> Optional[datetime]:
-        """문자열을 datetime 객체로 변환"""
-        if not date_string:
-            return None
-        
-        try:
-            # ISO 8601 형식 파싱 (2023-04-25T14:30:00+09:00)
-            dt = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
-            return dt
-        except (ValueError, TypeError):
-            try:
-                # 다른 일반적인 형식 시도
-                dt = datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
-                return dt
-            except (ValueError, TypeError):
-                return None
-    
-    def _parse_price(self, price) -> Optional[float]:
-        """가격 정보를 숫자로 변환"""
-        if price is None:
-            return None
-        
-        if isinstance(price, (int, float)):
-            return float(price)
-        
-        if isinstance(price, str):
-            # 문자열에서 숫자만 추출
-            try:
-                # 콤마와 원 기호 제거
-                clean_price = price.replace(',', '').replace('원', '').strip()
-                return float(clean_price)
-            except (ValueError, TypeError):
-                return None
-        
-        return None
-    
-    def _search_result_to_dict(self, result: SearchResult) -> Dict[str, Any]:
-        """SearchResult 객체를 딕셔너리로 변환"""
-        result_dict = {
-            "id": str(result.id),
-            "query": result.query,
-            "title": result.title,
-            "link": result.link,
-            "thumbnail": result.thumbnail,
-            "location": result.location,
-            "sido": result.sido,
-            "dong_id": result.dong_id,
-            "price": result.price,
-            "status": result.status,
-            "content": result.content,
-            "nickname": result.nickname,
-            "nickname_id": result.nickname_id,
-            "category": result.category,
-            "created_at": result.created_at.isoformat() if result.created_at else None,
-            "updated_at": result.updated_at.isoformat() if result.updated_at else None,
-            "created_at_origin": result.created_at_origin.isoformat() if result.created_at_origin else None,
-            "boosted_at": result.boosted_at.isoformat() if result.boosted_at else None,
-            "is_new": False  # 기본값으로 False 설정, 새 상품 여부는 나중에 업데이트
-        }
-        return result_dict
-    
-    async def get_latest_search_time(self, query: str) -> Optional[datetime]:
-        """주어진 쿼리에 대한 가장 최근 검색 시간을 반환합니다 (실제 크롤링된 검색만 고려)"""
-        try:
-            session = self.get_session()
-            
-            # 쿼리로 가장 최근 검색 요청 조회 (is_crawled=True인 경우만)
-            latest_search = session.query(SearchRequest).filter(
-                SearchRequest.query == query,
-                SearchRequest.is_crawled == True
-            ).order_by(
-                SearchRequest.created_at.desc()
-            ).first()
-            
-            if latest_search and latest_search.created_at:
-                # 시간을 KST로 변환
-                created_at = latest_search.created_at
-                if created_at.tzinfo is None:
-                    created_at = pytz.UTC.localize(created_at).astimezone(KST)
-                else:
-                    created_at = created_at.astimezone(KST)
-                
-                logger.info(f"쿼리 '{query}'의 가장 최근 크롤링 시간: {created_at}")
-                return created_at
-            
-            logger.info(f"쿼리 '{query}'에 대한 크롤링 기록이 없습니다.")
-            return None
-            
-        except Exception as e:
-            logger.error(f"최근 검색 시간 조회 중 오류 발생: {str(e)}")
-            return None
-        finally:
-            self.close_session()
-    
-    async def get_latest_search_request_by_query(self, query: str) -> Optional[Dict]:
-        """모든 사용자의 검색 이력에서 특정 쿼리에 대한 가장 최근 검색 요청을 반환합니다 (실제 크롤링된 검색만 고려)"""
-        try:
-            session = self.get_session()
-            
-            # 쿼리로 가장 최근 검색 요청 조회 (모든 사용자, is_crawled=True인 경우만)
-            latest_search = session.query(SearchRequest).filter(
-                SearchRequest.query == query,
-                SearchRequest.is_crawled == True
-            ).order_by(
-                SearchRequest.created_at.desc()
-            ).first()
-            
-            if latest_search:
-                # 시간을 KST로 변환
-                created_at = latest_search.created_at
-                if created_at.tzinfo is None:
-                    created_at = pytz.UTC.localize(created_at).astimezone(KST)
-                else:
-                    created_at = created_at.astimezone(KST)
-                
-                result = {
-                    "id": str(latest_search.id),
-                    "user_id": str(latest_search.user_id) if latest_search.user_id else None,
-                    "query": latest_search.query,
-                    "location": latest_search.location,
-                    "created_at": created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                    "is_crawled": latest_search.is_crawled
-                }
-                
-                logger.info(f"쿼리 '{query}'에 대한 가장 최근 크롤링 요청을 찾았습니다. ID: {result['id']}")
-                return result
-            
-            logger.info(f"쿼리 '{query}'에 대한 크롤링 요청이 없습니다.")
-            return None
-            
-        except Exception as e:
-            logger.error(f"최근 검색 요청 조회 중 오류 발생: {str(e)}")
-            return None
-        finally:
-            self.close_session()
-    
-    async def get_search_results_by_query(self, query: str) -> List[Dict]:
-        """검색어로 직접 검색 결과를 조회합니다. (search_request_id 없이)"""
-        try:
-            session = self.get_session()
-            
-            # 로깅을 통한 디버깅 추가
-            logger.info(f"query='{query}'로 직접 검색 결과 조회 시작")
-            
-            # search_results 테이블에서 해당 query와 일치하는 모든 결과 조회
-            results = session.query(SearchResult).filter(
-                SearchResult.query == query
-            ).order_by(
-                SearchResult.created_at_origin.desc()
-            ).limit(100).all()
-            
-            # 결과 변환
-            search_results = []
-            for item in results:
-                result_dict = self._search_result_to_dict(item)
-                
-                # 카테고리 URL과 ID 매핑 (카테고리 URL이 있는 경우)
-                category_url_to_id = {
-                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/2c0811ac0c0f491039082d246cd41de636d58cd6e54368a0b012c386645d7c66.png": 1,  # 디지털기기
-                    "https://dnvefa72aowie.cloudfront.net/origin/category/202306/ff36d0fb3a3214a9cc86c79a84262e0d9e11b6d7289ed9aa75e40d0129764fac.png": 172,  # 생활가전
-                    # 나머지 카테고리 URL 생략 (원본 함수와 동일)
-                }
-                
-                # 카테고리 URL을 ID로 변환
-                category_url = item.category
-                if category_url in category_url_to_id:
-                    result_dict["category_id"] = category_url_to_id[category_url]
-                else:
-                    result_dict["category_id"] = None
-                    
-                search_results.append(result_dict)
-            
-            logger.info(f"쿼리 '{query}'에 대해 {len(search_results)}개의 결과를 직접 조회했습니다.")
-            return search_results
-            
-        except Exception as e:
-            logger.error(f"직접 검색 결과 조회 중 오류 발생: {str(e)}")
-            import traceback
-            logger.error(f"상세 오류 정보: {traceback.format_exc()}")
             return []
         finally:
             self.close_session() 

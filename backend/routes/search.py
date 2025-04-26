@@ -184,7 +184,6 @@ async def search_products(
                     price=item["price"],
                     link=item["link"],
                     location=item["location"],
-                    sido=item.get("sido", ""),
                     content=item.get("content", ""),
                     thumbnail=item.get("thumbnail", ""),
                     created_at_origin=item.get("created_at_origin", ""),
@@ -192,7 +191,13 @@ async def search_products(
                     nickname=item.get("nickname", ""),
                     status=item.get("status", ""),
                     category_id=item.get("category_id"),
-                    is_new=item.get("is_new", False)
+                    is_new=item.get("is_new", False),
+                    dong_id=item.get("dong_id"),
+                    place_title_original=item.get("place_title_original"),
+                    sido=item.get("sido"),
+                    sigungu1=item.get("sigungu1"),
+                    sigungu2=item.get("sigungu2"),
+                    dong=item.get("dong")
                 ) for item in results['items']
             ]
             
@@ -440,7 +445,6 @@ async def search_products(
             price=item["price"],
             link=item["link"],
             location=item["location"],
-            sido=item.get("sido", ""),
             content=item.get("content", ""),
             thumbnail=item.get("thumbnail", ""),
             created_at_origin=item.get("created_at_origin", ""),
@@ -448,7 +452,13 @@ async def search_products(
             nickname=item.get("nickname", ""),
             status=item.get("status", ""),
             category_id=item.get("category_id"),
-            is_new=item.get("is_new", False)
+            is_new=item.get("is_new", False),
+            dong_id=item.get("dong_id"),
+            place_title_original=item.get("place_title_original"),
+            sido=item.get("sido"),
+            sigungu1=item.get("sigungu1"),
+            sigungu2=item.get("sigungu2"),
+            dong=item.get("dong")
         ) for item in initial_results
     ]
     
@@ -462,6 +472,20 @@ async def search_products(
 async def check_and_mark_search_completed(search_request_id: str, query: str):
     """검색 프로세스가 실제로 모두 완료되었는지 주기적으로 확인하고, 완료된 경우 active_searches에서 제거합니다"""
     try:
+        # 검색 프로세스의 상태를 즉시 확인
+        status = await db_service.get_search_process_status(search_request_id)
+        
+        # 완료 여부 확인 (모든 프로세스가 완료된 경우)
+        if status["total"] > 0 and status["completed"] == status["total"]:
+            async with active_searches_lock:
+                if query in active_searches and active_searches[query] == search_request_id:
+                    del active_searches[query]
+                    logger.info(f"모든 검색 프로세스가 완료되었습니다. 쿼리 '{query}'를 활성 목록에서 즉시 제거합니다. ID: {search_request_id}")
+            
+            # 즉시 완료된 경우 더 이상 검사할 필요가 없음
+            return
+        
+        # 아직 완료되지 않은 경우 주기적으로 확인
         retry_count = 0
         max_retries = 30  # 최대 30분(30 * 60초) 동안 완료 여부 확인
         check_interval = 60  # 60초 간격으로 확인
@@ -469,6 +493,9 @@ async def check_and_mark_search_completed(search_request_id: str, query: str):
         logger.info(f"검색 ID {search_request_id}의 완료 여부 확인 작업 시작")
         
         while retry_count < max_retries:
+            # 1분 대기
+            await asyncio.sleep(check_interval)
+            
             # 검색 프로세스의 상태를 확인
             status = await db_service.get_search_process_status(search_request_id)
             
@@ -483,10 +510,17 @@ async def check_and_mark_search_completed(search_request_id: str, query: str):
                             del active_searches[query]
                             logger.info(f"모든 검색 프로세스가 완료되었습니다. 쿼리 '{query}'를 활성 목록에서 제거합니다. ID: {search_request_id}")
                     break
+                
+                # 진행률이 100%에 가까운 경우에도 삭제 고려 (99% 이상인 경우)
+                if completion_percentage >= 99:
+                    async with active_searches_lock:
+                        if query in active_searches and active_searches[query] == search_request_id:
+                            del active_searches[query]
+                            logger.info(f"검색 진행률이 99% 이상 ({completion_percentage:.2f}%)이므로 쿼리 '{query}'를 활성 목록에서 제거합니다. ID: {search_request_id}")
+                    break
             
-            # 아직 완료되지 않았으므로 대기 후 다시 확인
+            # 다음 반복
             retry_count += 1
-            await asyncio.sleep(check_interval)
         
         # 최대 재시도 횟수를 초과한 경우
         if retry_count >= max_retries:
@@ -530,16 +564,24 @@ async def get_search_status(
     # 오류가 발생한 프로세스들 조회
     error_processes = await db_service.get_error_processes(search_request_id)
     
+    # place_params 전체 개수 조회 (id_min=1, id_max=3000)
+    place_params = await db_service.get_place_params()
+    place_params_count = len(place_params)
+    
+    # 완료율 계산 수정: place_params_count 기준으로 계산
+    completion_percentage = (status["completed"] / place_params_count * 100) if place_params_count > 0 else 0
+    
     # 최신 결과 반환
     response = {
         "search_id": search_request_id,
         "total_processes": status["total"],
         "completed_processes": status["completed"],
         "failed_processes": len(error_processes),
-        "completion_percentage": status["percentage"],
+        "completion_percentage": round(completion_percentage, 2),  # 수정된 완료율
         "total_items_found": results["total"],  # 전체 아이템 수를 가져옴
         "is_completed": status["total"] > 0 and status["completed"] == status["total"],
-        "error_processes": error_processes  # 오류 발생 프로세스 정보 추가
+        "error_processes": error_processes,  # 오류 발생 프로세스 정보 추가
+        "place_params_count": place_params_count  # 실제 place_params의 전체 개수 추가
     }
     
     return response
@@ -592,11 +634,15 @@ async def get_search_results(
     sort_by: str = "created_at_desc",
     only_available: bool = False,
     category_id: Optional[List[int]] = Query(None),
+    sido: Optional[str] = None,
+    sigungu1: Optional[str] = None, 
+    sigungu2: Optional[str] = None,
+    dong: Optional[str] = None,
     user_data: Optional[Dict] = Depends(verify_token)
 ):
     """검색 결과 조회 API - 특정 검색 요청의 결과를 반환합니다 (페이징, 정렬, 필터 지원)"""
     try:
-        logger.debug(f"검색 요청 ID {search_request_id}의 결과를 조회합니다. 페이지: {page}, 정렬: {sort_by}, 거래가능만: {only_available}, 카테고리: {category_id}")
+        logger.debug(f"검색 요청 ID {search_request_id}의 결과를 조회합니다. 페이지: {page}, 정렬: {sort_by}, 거래가능만: {only_available}, 카테고리: {category_id}, 지역필터: 시도={sido}, 시군구1={sigungu1}, 시군구2={sigungu2}, 동={dong}")
         
         # 페이지 번호와 사이즈 검증
         if page < 1:
@@ -616,7 +662,11 @@ async def get_search_results(
             page_size=page_size,
             sort_by=sort_by,
             only_available=only_available,
-            category_id=category_id
+            category_id=category_id,
+            sido=sido,
+            sigungu1=sigungu1,
+            sigungu2=sigungu2,
+            dong=dong
         )
         
         # 카테고리별 아이템 개수를 별도 필드로 추가
@@ -634,7 +684,6 @@ async def get_search_results(
                     price=item["price"],
                     link=item["link"],
                     location=item["location"],
-                    sido=item.get("sido", ""),
                     content=item.get("content", ""),
                     thumbnail=item.get("thumbnail", ""),
                     created_at_origin=item.get("created_at_origin", ""),
@@ -642,7 +691,13 @@ async def get_search_results(
                     nickname=item.get("nickname", ""),
                     status=item.get("status", ""),
                     category_id=item.get("category_id"),
-                    is_new=item.get("is_new", False)
+                    is_new=item.get("is_new", False),
+                    dong_id=item.get("dong_id"),
+                    place_title_original=item.get("place_title_original"),
+                    sido=item.get("sido"),
+                    sigungu1=item.get("sigungu1"),
+                    sigungu2=item.get("sigungu2"),
+                    dong=item.get("dong")
                 ) for item in result["items"]
             ],
             "pagination": {
@@ -733,7 +788,6 @@ async def get_existing_search_results(
                             price=item["price"],
                             link=item["link"],
                             location=item["location"],
-                            sido=item.get("sido", ""),
                             content=item.get("content", ""),
                             thumbnail=item.get("thumbnail", ""),
                             created_at_origin=item.get("created_at_origin", ""),
@@ -741,7 +795,13 @@ async def get_existing_search_results(
                             nickname=item.get("nickname", ""),
                             status=item.get("status", ""),
                             category_id=item.get("category_id"),
-                            is_new=item.get("is_new", False)
+                            is_new=item.get("is_new", False),
+                            dong_id=item.get("dong_id"),
+                            place_title_original=item.get("place_title_original"),
+                            sido=item.get("sido"),
+                            sigungu1=item.get("sigungu1"),
+                            sigungu2=item.get("sigungu2"),
+                            dong=item.get("dong")
                         ) for item in results['items']
                     ]
                     logger.info(f"방법 1 성공: 사용자 이력에서 {len(response_items)}개 결과 반환")
@@ -764,7 +824,6 @@ async def get_existing_search_results(
                     price=item["price"],
                     link=item["link"],
                     location=item["location"],
-                    sido=item.get("sido", ""),
                     content=item.get("content", ""),
                     thumbnail=item.get("thumbnail", ""),
                     created_at_origin=item.get("created_at_origin", ""),
@@ -772,7 +831,13 @@ async def get_existing_search_results(
                     nickname=item.get("nickname", ""),
                     status=item.get("status", ""),
                     category_id=item.get("category_id"),
-                    is_new=item.get("is_new", False)
+                    is_new=item.get("is_new", False),
+                    dong_id=item.get("dong_id"),
+                    place_title_original=item.get("place_title_original"),
+                    sido=item.get("sido"),
+                    sigungu1=item.get("sigungu1"),
+                    sigungu2=item.get("sigungu2"),
+                    dong=item.get("dong")
                 ) for item in direct_results
             ]
             logger.info(f"방법 2 성공: DB에서 직접 쿼리로 {len(response_items)}개 결과 반환")
@@ -805,7 +870,6 @@ async def get_existing_search_results(
                         price=item["price"],
                         link=item["link"],
                         location=item["location"],
-                        sido=item.get("sido", ""),
                         content=item.get("content", ""),
                         thumbnail=item.get("thumbnail", ""),
                         created_at_origin=item.get("created_at_origin", ""),
@@ -813,7 +877,13 @@ async def get_existing_search_results(
                         nickname=item.get("nickname", ""),
                         status=item.get("status", ""),
                         category_id=item.get("category_id"),
-                        is_new=item.get("is_new", False)
+                        is_new=item.get("is_new", False),
+                        dong_id=item.get("dong_id"),
+                        place_title_original=item.get("place_title_original"),
+                        sido=item.get("sido"),
+                        sigungu1=item.get("sigungu1"),
+                        sigungu2=item.get("sigungu2"),
+                        dong=item.get("dong")
                     ) for item in results['items']
                 ]
                 logger.info(f"방법 3 성공: 다른 사용자 이력에서 {len(response_items)}개 결과 반환")
@@ -860,6 +930,41 @@ async def get_latest_search_time(
             "latest_time": None,
             "error": str(e)
         }
+
+@router.get("/check-active", response_model=Dict)
+async def check_active_search(
+    query: str,
+    user_data: Optional[Dict] = Depends(verify_token)
+):
+    """주어진 쿼리가 현재 진행 중인 검색인지 확인합니다"""
+    normalized_query = query.strip().lower()
+    logger.info(f"쿼리 '{normalized_query}'가 현재 진행 중인지 확인 요청")
+    
+    search_id = None
+    is_active = False
+    
+    # 현재 진행 중인 검색 목록에서 검색
+    async with active_searches_lock:
+        if normalized_query in active_searches:
+            search_id = active_searches[normalized_query]
+            is_active = True
+            
+            # 검색이 이미 완료되었는지 확인
+            if search_id:
+                status = await db_service.get_search_process_status(search_id)
+                if status["total"] > 0 and status["completed"] == status["total"]:
+                    # 검색이 완료된 경우 active_searches에서 제거
+                    logger.info(f"쿼리 '{normalized_query}'의 검색이 완료되었으므로 활성 목록에서 제거합니다. (검색 ID: {search_id})")
+                    del active_searches[normalized_query]
+                    is_active = False
+    
+    logger.info(f"쿼리 '{normalized_query}' 활성 상태: {is_active}" + (f", 검색 ID: {search_id}" if search_id else ""))
+    
+    return {
+        "query": normalized_query,
+        "is_active": is_active,
+        "search_id": search_id if is_active else None
+    }
 
 @router.get("/", response_model=List[SearchResultItem])
 async def search_products_get(

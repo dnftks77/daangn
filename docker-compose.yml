@@ -11,7 +11,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://localhost:8080
       - VITE_DB_HOST=postgres
       - VITE_DB_PORT=5432
       - VITE_DB_USER=postgres
@@ -25,7 +25,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8080:8080"
     volumes:
       - ./backend:/app
     environment:
@@ -35,13 +35,14 @@ services:
       - DB_PASSWORD=postgres
       - DB_NAME=daangn_db
       - JWT_SECRET=0lq8etK+jzRIJdgPtsASY7gVpzYChrGo0B7+TvyhOqazTQ0qz+LiTSQ8SzIsOrSwAJ8yTC8q41mB0pcY1t5xuQ==
+      - PORT=8080
     depends_on:
       - postgres
 
   postgres:
     image: postgres:15
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql

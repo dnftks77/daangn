@@ -910,38 +910,6 @@ main {
   overflow-y: auto;
 }
 
-/* 필터 모달 스타일 수정 - 모바일에서 슬라이드 업 */
-@media screen and (max-width: 767px) {
-  .filter-modal .modal-card {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    max-width: 100%;
-    margin: 0;
-    border-radius: 15px 15px 0 0;
-    transform: translateY(100%);
-    height: calc(100vh - 64px);
-    max-height: calc(100vh - 64px);
-  }
-  
-  .filter-modal.is-active .modal-card {
-    transform: translateY(0);
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  
-  .filter-modal .modal-card-head {
-    border-radius: 15px 15px 0 0;
-    height: 61px;
-  }
-  
-  .filter-modal .modal-card-body {
-    max-height: calc(100vh - 64px - 57px); /* 전체 높이에서 헤더 높이 빼기 */
-    overflow-y: auto;
-  }
-}
-
 /* 닫기 버튼 스타일 */
 .filter-modal .modal-card-head .delete {
   display: none;
@@ -1722,8 +1690,8 @@ html {
     margin: 0;
     border-radius: 15px 15px 0 0;
     transform: translateY(100%);
-    height: calc(100vh - 64px);
-    max-height: calc(100vh - 64px);
+    height: calc(100vh - 94px);
+    max-height: calc(100vh - 94px);
   }
   
   .filter-modal.is-active .modal-card {

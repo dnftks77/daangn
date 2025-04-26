@@ -13,9 +13,14 @@ COPY . .
 ENV ENV=production
 ENV PORT=8080
 ENV JWT_SECRET=95d3c39a9bfb77e2d7fc00cfc99c5d9e3294b500d9baf88fc2854bf45c3033de
+ENV DB_HOST=34.85.3.52
+ENV DB_PORT=5432
+ENV DB_USER=postgres
+ENV DB_PASSWORD=Daangn2024!
+ENV DB_NAME=daangn
 
 # 포트 노출
 EXPOSE 8080
 
-# 프로덕션 환경에서는 reload 옵션 제거
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"] 
+# 애플리케이션 실행 명령 수정
+CMD ["python", "main.py"] 

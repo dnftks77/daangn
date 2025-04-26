@@ -1,7 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { isAuthenticated, getCurrentUser, checkAdminStatus } from '../services/auth';
+import { isAuthenticated, logout, getCurrentUser, checkAdminStatus } from '../services/auth';
+import _ from 'lodash';
+import '../App.css';
+import LocationDisplay from '../components/LocationDisplay';
+import SearchProgressBar from '../components/SearchProgressBar';
 
 // 카테고리 이미지 임포트
 import digitalImg from '../assets/2c0811ac0c0f491039082d246cd41de636d58cd6e54368a0b012c386645d7c66.png';
@@ -31,7 +35,6 @@ interface SearchResultItem {
   price: string | number | null | undefined;
   link: string;
   location: string;
-  sido: string;
   content: string;
   thumbnail: string;
   created_at_origin: string;
@@ -41,6 +44,12 @@ interface SearchResultItem {
   category: string;
   category_id?: number;
   is_new?: boolean;  // 새로운 상품 여부
+  dong_id?: number;  // 동 ID
+  place_title_original?: string;  // 전체 지역명
+  sido?: string;  // 시/도
+  sigungu1?: string;  // 시/군/구
+  sigungu2?: string;  // 추가 시/군/구
+  dong?: string;  // 동
 }
 
 // 디버그 정보 인터페이스 추가
@@ -131,7 +140,6 @@ function Home() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [currentSearchId, setCurrentSearchId] = useState<string | null>(null);
   const [searchStatus, setSearchStatus] = useState<SearchStatus | null>(null);
-  const [pollingInterval, setPollingInterval] = useState<number | null>(null);
   const [updatedItems, setUpdatedItems] = useState<string[]>([]);
   const searchResultsRef = useRef<SearchResultItem[]>([]);
   const [searchMode, setSearchMode] = useState<'new' | 'existing'>('new');
@@ -192,6 +200,40 @@ function Home() {
   const initialRenderRef = useRef(true);
   const searchFormRef = useRef<HTMLFormElement>(null); // 검색 폼 참조 추가
   const searchButtonRef = useRef<HTMLButtonElement>(null); // 검색 버튼 참조 추가
+
+  // 최근 검색어 애니메이션 효과를 위한 상태
+  const [animatedProgresses, setAnimatedProgresses] = useState<Record<string, number>>({});
+
+  // 애니메이션 처리를 위한 useEffect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const newAnimatedProgresses = { ...animatedProgresses };
+      let needsUpdate = false;
+
+      recentSearches.forEach(search => {
+        if (search.id && search.progress !== undefined) {
+          const currentAnimated = animatedProgresses[search.id] || 0;
+          const targetProgress = search.progress;
+          
+          if (currentAnimated < targetProgress) {
+            // 부드러운 애니메이션을 위해 점진적으로 값을 증가
+            const nextValue = Math.min(
+              currentAnimated + Math.max(1, (targetProgress - currentAnimated) / 10),
+              targetProgress
+            );
+            newAnimatedProgresses[search.id] = nextValue;
+            needsUpdate = true;
+          }
+        }
+      });
+
+      if (needsUpdate) {
+        setAnimatedProgresses(newAnimatedProgresses);
+      }
+    }, 30);
+
+    return () => clearTimeout(timer);
+  }, [recentSearches, animatedProgresses]);
 
   // URL에서 검색어 파라미터를 가져와 검색 실행 (단일 useEffect로 통합)
   useEffect(() => {
@@ -544,12 +586,8 @@ function Home() {
     getUser();
     fetchRecentSearches();
 
-    // 컴포넌트 언마운트 시 폴링 정리
+    // 컴포넌트 언마운트 시 정리
     return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-      
       // resize 이벤트 리스너 제거
       window.removeEventListener('resize', handleResize);
     };
@@ -557,16 +595,54 @@ function Home() {
   
   // 주기적으로 최근 검색 이력 업데이트
   useEffect(() => {
-    // 5초마다 최근 검색 이력 업데이트
-    const intervalId = setInterval(() => {
-      fetchRecentSearches();
-    }, 5000);
+    let fastIntervalId: number | null = null;
+    let slowIntervalId: number | null = null;
+    
+    // 진행 중인 검색이 있는지 확인하는 함수
+    const hasActiveSearches = () => {
+      return recentSearches.some(search => 
+        search.progress !== undefined && 
+        search.progress < 100 && 
+        search.is_completed === false
+      );
+    };
+    
+    // 업데이트 주기 설정 함수
+    const setupIntervals = () => {
+      // 기존 인터벌 정리
+      if (fastIntervalId) clearInterval(fastIntervalId);
+      if (slowIntervalId) clearInterval(slowIntervalId);
+      
+      // 진행 중인 검색이 있으면 빠른 업데이트(1초)
+      if (hasActiveSearches()) {
+        console.log('[디버그] 진행 중인 검색이 있어 1초마다 업데이트합니다.');
+        fastIntervalId = window.setInterval(fetchRecentSearches, 1000);
+        slowIntervalId = null;
+      } else {
+        // 진행 중인 검색이 없으면 느린 업데이트(10초)
+        console.log('[디버그] 진행 중인 검색이 없어 10초마다 업데이트합니다.');
+        slowIntervalId = window.setInterval(fetchRecentSearches, 10000);
+        fastIntervalId = null;
+      }
+    };
+    
+    // 초기 설정 및 최초 데이터 로드
+    fetchRecentSearches().then(() => {
+      setupIntervals();
+    });
+    
+    // recentSearches가 변경될 때마다 업데이트 주기 재설정
+    const checkInterval = setInterval(() => {
+      setupIntervals();
+    }, 5000); // 5초마다 상태 확인
     
     // 컴포넌트 언마운트 시 인터벌 정리
     return () => {
-      clearInterval(intervalId);
+      if (fastIntervalId) clearInterval(fastIntervalId);
+      if (slowIntervalId) clearInterval(slowIntervalId);
+      clearInterval(checkInterval);
     };
-  }, []);
+  }, [recentSearches.length]);
   
   // 최근 검색어 목록이 변경될 때만 펼치기 상태 초기화
   useEffect(() => {
@@ -586,66 +662,23 @@ function Home() {
     }
   }, [screenWidth, calculateVisibleTags, showAllRecentSearches]);
 
-  // 검색 상태 폴링 설정 (검색 ID가 변경될 때마다)
+  // 검색 완료 시 결과 다시 로드
   useEffect(() => {
-    // 이전 인터벌 정리
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      setPollingInterval(null);
-      console.log('[디버그] 이전 폴링 인터벌 정리됨');
-    }
-
-    // 새 검색 ID가 있으면 폴링 시작
-    if (currentSearchId) {
-      console.log(`[디버그] 검색 ID ${currentSearchId}에 대한 상태 폴링 시작`);
-      
-      // 첫 번째 상태 확인 즉시 실행
-      console.log('[디버그] 첫 상태 확인 즉시 실행');
-      fetchSearchStatus(currentSearchId);
-      
-      const interval = window.setInterval(() => {
-        console.log('[디버그] 주기적 폴링 실행');
-        fetchSearchStatus(currentSearchId);
-      }, 2000); // 2초마다 상태 체크
-      
-      setPollingInterval(interval);
-    } else {
-      console.log('[디버그] 검색 ID가 없어 폴링 시작하지 않음');
-    }
-    
-    // 컴포넌트 언마운트 시 정리
-    return () => {
-      if (pollingInterval) {
-        console.log('[디버그] 컴포넌트 언마운트로 폴링 정리');
-        clearInterval(pollingInterval);
-      }
-    };
-  }, [currentSearchId]);
-
-  // 검색 상태가 완료되면 폴링 중지
-  useEffect(() => {
-    if (searchStatus && searchStatus.is_completed && pollingInterval) {
-      console.log('[디버그] 검색이 완료되었습니다. 폴링을 중지합니다.');
-      clearInterval(pollingInterval);
-      setPollingInterval(null);
+    if (searchStatus && searchStatus.is_completed && currentSearchId) {
+      console.log('[디버그] 검색이 완료되었습니다. 결과를 다시 로드합니다.');
       
       // 검색이 완료되면 현재 필터 설정으로 결과를 다시 로드
-      if (currentSearchId) {
-        console.log('[디버그] 검색 완료 후 현재 필터 설정으로 결과 다시 로드 예정');
-        // 상태 업데이트가 적용된 후 호출되도록 setTimeout 사용
-        // 카테고리 필터 상태와 충돌 방지를 위해 약간 지연
-        const reloadTimeout = setTimeout(() => {
-          console.log('[디버그] 검색 완료 후 현재 필터 설정으로 결과 다시 로드 시작');
-          // 직접 값을 전달하는 핸들러 사용
-          handleOnlyAvailableWithValue(onlyAvailable, sortBy);
-        }, 300);
-        
-        return () => {
-          clearTimeout(reloadTimeout);
-        };
-      }
+      const reloadTimeout = setTimeout(() => {
+        console.log('[디버그] 검색 완료 후 현재 필터 설정으로 결과 다시 로드 시작');
+        // 직접 값을 전달하는 핸들러 사용
+        handleOnlyAvailableWithValue(onlyAvailable, sortBy);
+      }, 300);
+      
+      return () => {
+        clearTimeout(reloadTimeout);
+      };
     }
-  }, [searchStatus, pollingInterval, currentSearchId]);
+  }, [searchStatus, currentSearchId, onlyAvailable, sortBy]);
 
   // 업데이트된 항목의 플래시 효과를 관리하는 효과
   useEffect(() => {
@@ -735,9 +768,36 @@ function Home() {
       console.log('최근 검색 이력 응답:', response.data);
       
       if (response.data && Array.isArray(response.data)) {
-        setRecentSearches(response.data);
-        console.log('최근 검색 이력:', response.data);
-        return response.data;
+        // 각 검색에 대한 최신 상태 가져오기
+        const updatedSearches = await Promise.all(
+          response.data.map(async (search) => {
+            if (search.id) {
+              try {
+                // 검색 상태 API를 통해 최신 정보 가져오기
+                const statusUrl = `${apiUrl}/api/search/status/${search.id}`;
+                const statusResponse = await axios.get(statusUrl, config);
+                
+                if (statusResponse.data) {
+                  // 검색 상태 정보 업데이트
+                  return {
+                    ...search,
+                    progress: statusResponse.data.completion_percentage,
+                    total_items: statusResponse.data.total_items_found,
+                    is_completed: statusResponse.data.is_completed,
+                    failed_processes: statusResponse.data.failed_processes
+                  };
+                }
+              } catch (error) {
+                console.error(`검색 ID ${search.id}의 상태 조회 중 오류:`, error);
+              }
+            }
+            return search;
+          })
+        );
+        
+        setRecentSearches(updatedSearches);
+        console.log('최근 검색 이력(상태 업데이트 후):', updatedSearches);
+        return updatedSearches;
       } else {
         console.error('최근 검색 이력 응답이 배열이 아닙니다:', response.data);
         setRecentSearches([]);
@@ -1256,24 +1316,62 @@ function Home() {
       setLatestSearchTime(latestTime);
       console.log(`[디버그] 최근 검색 시간 조회 결과:`, latestTime);
       
-      // 검색 모드를 'existing'으로 설정 (최신 검색 버튼 표시 위해)
-      setSearchMode('existing');
-      
       // 1. 최근 검색 이력에서 일치하는 검색어 찾기 (검색 ID를 얻기 위해)
       console.log(`[디버그] 사용자 검색 이력에서 검색 시도`);
       const recentSearches = await fetchRecentSearches();
       const matchingSearch = recentSearches.find((s: RecentSearch) => 
         s.query.toLowerCase().trim() === query.toLowerCase().trim()
       );
-      
+
       // 2. 직접 API에서 기존 결과를 가져옵니다 (빠른 표시용)
       console.log(`[디버그] DB에서 직접 검색 결과 가져오기 (fetchExistingResults)`);
       const directResults = await fetchExistingResults(query);
       
-      // URL에 use_existing=true 파라미터 추가
+      // 3. 현재 진행 중인 검색인지 확인 (Header에서 active_searches 여부 확인)
+      // 백엔드 API 서버 URL
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const statusCheckUrl = `${apiUrl}/api/search/check-active?query=${encodeURIComponent(query.trim())}`;
+      
+      let isActiveSearch = false;
+      try {
+        const token = localStorage.getItem('token');
+        const config: any = {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        };
+        
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        
+        const activeResponse = await axios.get(statusCheckUrl, config);
+        isActiveSearch = activeResponse.data && activeResponse.data.is_active === true;
+        console.log(`[디버그] 쿼리 '${query}' 검색 진행 중 여부:`, isActiveSearch);
+      } catch (error) {
+        console.error('[디버그] 활성 검색 상태 확인 중 오류:', error);
+        // 오류 발생 시 기본적으로 활성 상태가 아닌 것으로 간주
+        isActiveSearch = false;
+      }
+      
+      // URL 파라미터 세팅 - 현재 진행 중인 검색이면 use_existing 파라미터를 추가하지 않음
       const currentUrl = new URL(window.location.href);
       currentUrl.searchParams.set('q', query);
-      currentUrl.searchParams.set('use_existing', 'true');
+      
+      if (isActiveSearch) {
+        // 진행 중인 검색인 경우 use_existing 파라미터를 제거
+        currentUrl.searchParams.delete('use_existing');
+        console.log(`[디버그] 진행 중인 검색 감지: use_existing 파라미터 제거됨`);
+        // 검색 모드를 'new'로 설정
+        setSearchMode('new');
+      } else {
+        // 진행 중이 아닌 경우 use_existing 파라미터 추가
+        currentUrl.searchParams.set('use_existing', 'true');
+        console.log(`[디버그] 완료된 검색 감지: use_existing=true 파라미터 추가됨`);
+        // 검색 모드를 'existing'으로 설정
+        setSearchMode('existing');
+      }
+      
       window.history.pushState({}, '', currentUrl.toString());
       
       // 검색 결과가 있는 경우 먼저 표시 (사용자 경험 개선)
@@ -1286,6 +1384,16 @@ function Home() {
         console.log(`[디버그] DB에서 직접 결과를 찾지 못함`);
         setSearchResults([]);
         searchResultsRef.current = [];
+      }
+      
+      // 현재 진행 중인 검색이면 새 검색을 시작
+      if (isActiveSearch) {
+        console.log(`[디버그] 진행 중인 검색이므로 새 검색 시작`);
+        
+        // 폼 제출 이벤트 생성 및 트리거
+        const formEvent = { preventDefault: () => {} } as React.FormEvent;
+        handleSearch(formEvent);
+        return;
       }
       
       // 매칭된 검색 ID가 있는 경우 - 카테고리 정보와 완전한 필터링을 위해 필수
@@ -2342,11 +2450,11 @@ function Home() {
                             {search.query}
                             {search.progress !== undefined ? (
                               search.progress < 100 ? (
-                                <span className="ml-1 has-text-info">({Math.floor(search.progress)}%)</span>
-                              ) : null
+                                <span className="ml-1 has-text-info">({parseInt(String(animatedProgresses[search.id] || search.progress))}%)</span>
+                              ) : ""
                             ) : null}
-                            {search.is_completed === false && search.failed_processes && search.failed_processes > 0 && search.progress !== undefined && (
-                              <span className="ml-1 has-text-danger">실패 {Math.floor((search.failed_processes / (search.progress + search.failed_processes)) * 100)}%</span>
+                            {search.is_completed === false && search.failed_processes && search.failed_processes > 0 && (
+                              <span className="ml-1 has-text-danger">오류</span>
                             )}
                           </span>
                         ));
@@ -2698,17 +2806,11 @@ function Home() {
                   <div className="py-5">
                     {/* 검색 진행률 표시 - 초기 로딩 시 */}
                     {searchMode === 'new' && (
-                      <div className="notification is-info is-light mb-4">
-                        <div className="is-flex is-align-items-center">
-                          <progress 
-                            className="progress is-primary" 
-                            value={searchStatus ? searchStatus.completion_percentage : 0} 
-                            max="100"
-                            style={{ flexGrow: 1, marginRight: '10px' }}
-                          ></progress>
-                          <span>{Math.round(searchStatus ? searchStatus.completion_percentage : 0)}%</span>
-                        </div>
-                      </div>
+                      <SearchProgressBar 
+                        searchId={currentSearchId} 
+                        searchTerm={searchTerm}
+                        isCompleted={searchStatus?.is_completed}
+                      />
                     )}
                     
                     {/* 로딩 중에 스켈레톤 UI 표시 */}
@@ -2729,53 +2831,12 @@ function Home() {
                 ) : searchResults.length > 0 ? (
                   <div>
                     {/* 검색 진행률 표시 - 결과가 있는 경우 */}
-                    {(() => {
-                      console.log('[디버그] 프로그레스바 렌더링 조건 검사:');
-                      console.log('[디버그] searchMode:', searchMode);
-                      console.log('[디버그] loading:', loading);
-                      console.log('[디버그] searchStatus 존재:', !!searchStatus);
-                      console.log('[디버그] total_processes > 0:', searchStatus && searchStatus.total_processes > 0);
-                      console.log('[디버그] !is_completed:', searchStatus ? !searchStatus.is_completed : 'searchStatus 없음');
-                      
-                      // 검색 중이고 새 검색 모드인 경우 진행 상태 표시
-                      if (searchMode === 'new' && (loading || (searchStatus && !searchStatus.is_completed))) {
-                        const percentage = searchStatus ? searchStatus.completion_percentage : 0;
-                        const completedProcesses = searchStatus ? searchStatus.completed_processes : 0;
-                        const totalProcesses = searchStatus ? searchStatus.total_processes : 1;
-                        const totalItemsFound = searchStatus ? searchStatus.total_items_found : 0;
-                        
-                        console.log('[디버그] 프로그레스바 표시 조건 충족됨');
-                        return (
-                          <div className="notification is-info is-light mb-4">
-                            <div className="is-flex is-align-items-center">
-                              <progress 
-                                className="progress is-primary" 
-                                value={percentage} 
-                                max="100"
-                                style={{ flexGrow: 1, marginRight: '10px' }}
-                              ></progress>
-                              <span>{Math.round(percentage)}%</span>
-                            </div>
-                            <p className="is-size-7 mt-1">
-                              {searchStatus ? (
-                                <>검색이 진행 중입니다1
-                                </>
-                              ) : (
-                                <>검색이 진행 중입니다2</>
-                              )}
-                            </p>
-                          </div>
-                        );
-                      }
-                      console.log('[디버그] 프로그레스바 표시 조건 불충족');
-                      return null;
-                    })()}
-                    
-                    {/* 검색 완료 메시지 (100% 완료시) */}
-                    {searchMode === 'new' && searchStatus && searchStatus.is_completed && searchStatus.completion_percentage === 100 && (
-                      <div className="notification is-success is-light mb-4">
-                        <strong>"{searchTerm}" 전국검색이 완료되었습니다</strong>
-                      </div>
+                    {searchMode === 'new' && (
+                      <SearchProgressBar 
+                        searchId={currentSearchId} 
+                        searchTerm={searchTerm}
+                        isCompleted={searchStatus?.is_completed}
+                      />
                     )}
                     
                     {/* 실제 검색 결과 */}
@@ -2825,7 +2886,12 @@ function Home() {
                                 
                                 <div className="search-item-meta">
                                   <span>
-                                    {item.sido ? `${item.sido.substring(0, 2)} ${item.location}` : (item.location || '위치 정보 없음')}
+                                    <LocationDisplay 
+                                      sido={item.sido} 
+                                      dong={item.dong} 
+                                      location={item.location} 
+                                      place_title_original={item.place_title_original}
+                                    />
                                   </span>
                                   <span className="mx-1">·</span>
                                   <span>
@@ -2871,7 +2937,12 @@ function Home() {
                                   <div className="search-item-list-bottom-row">
                                     <div className="search-item-list-desc">{item.content}</div>
                                     <div className="search-item-list-location">
-                                      {item.sido ? `${item.sido.substring(0, 2)} ${item.location}` : (item.location || '위치 정보 없음')}
+                                      <LocationDisplay 
+                                        sido={item.sido} 
+                                        dong={item.dong} 
+                                        location={item.location} 
+                                        place_title_original={item.place_title_original}
+                                      />
                                     </div>
                                   </div>
                                 </div>

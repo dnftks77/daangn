@@ -41,6 +41,10 @@ class SearchFilter(BaseModel):
     page: Optional[int] = 1
     page_size: Optional[int] = 20
     query: Optional[str] = None  # 쿼리는 선택 사항(특정 검색 ID로 조회 시)
+    sido: Optional[str] = None  # 시/도 필터링
+    sigungu1: Optional[str] = None  # 시/군/구 필터링
+    sigungu2: Optional[str] = None  # 추가 시/군/구 필터링
+    dong: Optional[str] = None  # 동 필터링
 
 # 검색 결과 아이템 모델
 class SearchResultItem(BaseModel):
@@ -48,7 +52,6 @@ class SearchResultItem(BaseModel):
     price: Optional[Union[str, float, int]] = None
     link: str
     location: Optional[str] = None
-    sido: Optional[str] = None
     content: Optional[str] = None
     thumbnail: Optional[str] = None
     created_at_origin: Optional[str] = None
@@ -57,6 +60,12 @@ class SearchResultItem(BaseModel):
     status: Optional[str] = None
     category_id: Optional[int] = None
     is_new: Optional[bool] = False  # 새로운 상품 여부
+    dong_id: Optional[int] = None  # 동 ID
+    place_title_original: Optional[str] = None  # 전체 지역명
+    sido: Optional[str] = None  # 시/도
+    sigungu1: Optional[str] = None  # 시/군/구
+    sigungu2: Optional[str] = None  # 추가 시/군/구
+    dong: Optional[str] = None  # 동
 
 # 페이징 정보 모델
 class PaginationInfo(BaseModel):
@@ -82,7 +91,6 @@ class SearchResult(BaseModel):
     price: Union[float, int, str]
     link: str
     location: str
-    sido: Optional[str] = None
     content: str
     thumbnail: str
     created_at_origin: str

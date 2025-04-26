@@ -485,8 +485,38 @@ function Trend() {
       // 해당 검색어의 최근 검색 시간 조회
       const latestTime = await fetchLatestSearchTime(keyword);
       
-      // 검색 결과가 있는 경우 use_existing=true 파라미터 추가
-      if (latestTime && latestTime.has_results && latestTime.latest_time) {
+      // 현재 진행 중인 검색인지 확인 (check-active API 호출)
+      const statusCheckUrl = `${apiUrl}/api/search/check-active?query=${encodeURIComponent(keyword.trim())}`;
+      let isActiveSearch = false;
+      
+      try {
+        const token = localStorage.getItem('token');
+        const config: any = {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        };
+        
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        
+        const activeResponse = await axios.get(statusCheckUrl, config);
+        isActiveSearch = activeResponse.data && activeResponse.data.is_active === true;
+        console.log(`[디버그] 쿼리 '${keyword}' 검색 진행 중 여부:`, isActiveSearch);
+      } catch (error) {
+        console.error('[디버그] 활성 검색 상태 확인 중 오류:', error);
+        // 오류 발생 시 기본적으로 활성 상태가 아닌 것으로 간주
+        isActiveSearch = false;
+      }
+      
+      // URL 파라미터 설정
+      if (isActiveSearch) {
+        // 진행 중인 검색인 경우 use_existing 파라미터 없이 검색 페이지로 이동
+        console.log(`"${keyword}" 검색어가 현재 진행 중이므로 일반 검색으로 이동합니다`);
+        navigate(`/search?q=${encodeURIComponent(keyword)}`);
+      } else if (latestTime && latestTime.has_results && latestTime.latest_time) {
+        // 검색 결과가 있고 진행 중이 아닌 경우 use_existing=true 파라미터 추가
         console.log(`"${keyword}" 검색어에 대한 기존 결과가 있어 use_existing=true로 검색 페이지로 이동합니다`);
         navigate(`/search?q=${encodeURIComponent(keyword)}&use_existing=true`);
       } else {
@@ -652,7 +682,7 @@ function Trend() {
                         {search.progress !== undefined ? (
                           search.progress < 100 ? (
                             <span className="ml-1 has-text-info">({Math.floor(search.progress)}%)</span>
-                          ) : null
+                          ) : ""
                         ) : null}
                         {search.is_completed === false && search.failed_processes && search.failed_processes > 0 && search.progress !== undefined && (
                           <span className="ml-1 has-text-danger">실패 {Math.floor((search.failed_processes / (search.progress + search.failed_processes)) * 100)}%</span>

@@ -109,6 +109,37 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         "is_admin": user.get("is_admin", False)
     }
 
+# 로그인 엔드포인트 (/login)
+@router.post("/login")
+async def login_endpoint(user_data: UserRegister):
+    user = await authenticate_user(user_data.username, user_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="아이디 또는 비밀번호가 올바르지 않습니다",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token_data = {
+        "sub": str(user["id"]),
+        "username": user["username"],
+        "is_admin": user.get("is_admin", False)
+    }
+    
+    # JWT 토큰 생성
+    access_token = jwt.encode(
+        {**token_data, "exp": datetime.utcnow() + timedelta(minutes=int(ACCESS_TOKEN_EXPIRE_MINUTES))},
+        JWT_SECRET,
+        algorithm=ALGORITHM
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "username": user["username"],
+        "is_admin": user.get("is_admin", False)
+    }
+
 # 사용자 등록 엔드포인트
 @router.post("/register")
 async def register(user_data: UserRegister):
