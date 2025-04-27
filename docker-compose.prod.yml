@@ -1,0 +1,53 @@
+version: '3'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://backend:8080
+      - VITE_DB_HOST=postgres
+      - VITE_DB_PORT=5432
+      - VITE_DB_USER=postgres
+      - VITE_DB_PASSWORD=Daangn2024!
+      - VITE_DB_NAME=daangn
+    depends_on:
+      - backend
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ENV=production  # 프로덕션 환경으로 설정
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=Daangn2024!
+      - DB_NAME=daangn
+      - JWT_SECRET=95d3c39a9bfb77e2d7fc00cfc99c5d9e3294b500d9baf88fc2854bf45c3033de
+      - PORT=8080
+    depends_on:
+      - postgres
+    restart: always
+
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=Daangn2024!
+      - POSTGRES_DB=daangn
+    restart: always
+
+volumes:
+  postgres_data: 

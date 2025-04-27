@@ -47,6 +47,9 @@ function Trend() {
   const [textOffset, setTextOffset] = useState(0);
   const activeWordRef = useRef<HTMLSpanElement>(null);
   
+  // animatedProgresses 상태 추가
+  const [animatedProgresses, setAnimatedProgresses] = useState<{[key: string]: number}>({});
+  
   // API URL
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -171,9 +174,36 @@ function Trend() {
       console.log('최근 검색 이력 응답:', response.data);
       
       if (response.data && Array.isArray(response.data)) {
-        setRecentSearches(response.data);
-        console.log('최근 검색 이력:', response.data);
-        return response.data;
+        // 각 검색에 대한 최신 상태 가져오기
+        const updatedSearches = await Promise.all(
+          response.data.map(async (search) => {
+            if (search.id) {
+              try {
+                // 검색 상태 API를 통해 최신 정보 가져오기
+                const statusUrl = `${apiUrl}/api/search/status/${search.id}`;
+                const statusResponse = await axios.get(statusUrl, config);
+                
+                if (statusResponse.data) {
+                  // 검색 상태 정보 업데이트
+                  return {
+                    ...search,
+                    progress: statusResponse.data.completion_percentage,
+                    total_items: statusResponse.data.total_items_found,
+                    is_completed: statusResponse.data.is_completed,
+                    failed_processes: statusResponse.data.failed_processes
+                  };
+                }
+              } catch (error) {
+                console.error(`검색 ID ${search.id}의 상태 조회 중 오류:`, error);
+              }
+            }
+            return search;
+          })
+        );
+        
+        setRecentSearches(updatedSearches);
+        console.log('최근 검색 이력(상태 업데이트 후):', updatedSearches);
+        return updatedSearches;
       } else {
         console.error('최근 검색 이력 응답이 배열이 아닙니다:', response.data);
         setRecentSearches([]);
@@ -181,6 +211,19 @@ function Trend() {
       }
     } catch (error: any) {
       console.error('최근 검색 이력 조회 중 오류 발생:', error);
+      
+      if (error.response) {
+        // 서버 응답이 있는 경우 (에러 상태 코드)
+        console.error('서버 응답 상태:', error.response.status);
+        console.error('서버 응답 데이터:', error.response.data);
+      } else if (error.request) {
+        // 요청은 보냈지만 응답이 없는 경우
+        console.error('응답을 받지 못했습니다:', error.request);
+      } else {
+        // 요청 설정 중 오류가 발생한 경우
+        console.error('요청 설정 오류:', error.message);
+      }
+      
       setRecentSearches([]);
       return [];
     } finally {
@@ -363,16 +406,98 @@ function Trend() {
 
   // 주기적으로 최근 검색 이력 업데이트
   useEffect(() => {
-    // 5초마다 최근 검색 이력 업데이트
-    const intervalId = setInterval(() => {
-      fetchRecentSearches();
-    }, 5000);
+    let fastIntervalId: number | null = null;
+    let slowIntervalId: number | null = null;
+    
+    // 진행 중인 검색이 있는지 확인하는 함수
+    const hasActiveSearches = () => {
+      return recentSearches.some(search => 
+        search.progress !== undefined && 
+        search.progress < 100 && 
+        search.is_completed === false
+      );
+    };
+    
+    // 업데이트 주기 설정 함수
+    const setupIntervals = () => {
+      // 기존 인터벌 정리
+      if (fastIntervalId) clearInterval(fastIntervalId);
+      if (slowIntervalId) clearInterval(slowIntervalId);
+      
+      // 진행 중인 검색이 있으면 빠른 업데이트(1초)
+      if (hasActiveSearches()) {
+        console.log('[디버그] 진행 중인 검색이 있어 1초마다 업데이트합니다.');
+        fastIntervalId = window.setInterval(fetchRecentSearches, 1000);
+        slowIntervalId = null;
+      } else {
+        // 진행 중인 검색이 없으면 느린 업데이트(10초)
+        console.log('[디버그] 진행 중인 검색이 없어 10초마다 업데이트합니다.');
+        slowIntervalId = window.setInterval(fetchRecentSearches, 10000);
+        fastIntervalId = null;
+      }
+    };
+    
+    // 초기 설정 및 최초 데이터 로드
+    fetchRecentSearches().then(() => {
+      setupIntervals();
+    });
+    
+    // recentSearches가 변경될 때마다 업데이트 주기 재설정
+    const checkInterval = setInterval(() => {
+      setupIntervals();
+    }, 5000); // 5초마다 상태 확인
     
     // 컴포넌트 언마운트 시 인터벌 정리
     return () => {
-      clearInterval(intervalId);
+      if (fastIntervalId) clearInterval(fastIntervalId);
+      if (slowIntervalId) clearInterval(slowIntervalId);
+      clearInterval(checkInterval);
     };
-  }, []);
+  }, [recentSearches.length]);
+
+  // 진행률 애니메이션을 위한 useEffect 추가
+  useEffect(() => {
+    if (recentSearches.length === 0) return;
+    
+    // 진행 중인 검색에 대해 애니메이션 진행률 설정
+    const newAnimatedProgresses: {[key: string]: number} = {};
+    
+    recentSearches.forEach(search => {
+      if (search.progress !== undefined && search.progress < 100) {
+        // 이전에 저장된 애니메이션 진행률이 있으면 그 값을 사용하거나, 없으면 현재 진행률 사용
+        newAnimatedProgresses[search.id] = 
+          animatedProgresses[search.id] !== undefined ? 
+            animatedProgresses[search.id] : search.progress;
+      }
+    });
+    
+    // 애니메이션 진행률 상태 업데이트
+    setAnimatedProgresses(prev => ({...prev, ...newAnimatedProgresses}));
+    
+    // 진행 중인 검색이 있을 경우 애니메이션 실행
+    const animationIntervalId = setInterval(() => {
+      setAnimatedProgresses(prev => {
+        const updated = {...prev};
+        let hasActiveAnimation = false;
+        
+        recentSearches.forEach(search => {
+          if (search.progress !== undefined && search.progress < 100) {
+            // 현재 애니메이션 값이 실제 진행률보다 작으면 증가
+            if (updated[search.id] < search.progress) {
+              updated[search.id] = Math.min(updated[search.id] + 1, search.progress);
+              hasActiveAnimation = true;
+            }
+          }
+        });
+        
+        return hasActiveAnimation ? updated : prev;
+      });
+    }, 100);
+    
+    return () => {
+      clearInterval(animationIntervalId);
+    };
+  }, [recentSearches]);
 
   // 태그 컨테이너 크기 변경 감지를 위한 ResizeObserver 설정
   useEffect(() => {
@@ -672,23 +797,40 @@ function Trend() {
                     const hiddenCount = sortedSearches.length - visibleTagsCount;
                     
                     // 각 검색어를 JSX 요소로 변환
-                    const searchElements = visibleSearches.map((search, index) => (
-                      <span 
-                        key={index} 
-                        className="tag is-medium is-light is-clickable recent-keyword" 
-                        onClick={() => handleRecentSearchClick(search.query)}
-                      >
-                        {search.query}
-                        {search.progress !== undefined ? (
-                          search.progress < 100 ? (
-                            <span className="ml-1 has-text-info">({Math.floor(search.progress)}%)</span>
-                          ) : ""
-                        ) : null}
-                        {search.is_completed === false && search.failed_processes && search.failed_processes > 0 && search.progress !== undefined && (
-                          <span className="ml-1 has-text-danger">실패 {Math.floor((search.failed_processes / (search.progress + search.failed_processes)) * 100)}%</span>
-                        )}
-                      </span>
-                    ));
+                    const searchElements = visibleSearches.map((search, index) => {
+                      // 진행률 표시 변수
+                      let progressDisplay = null;
+                      if (search.progress !== undefined && search.progress < 100) {
+                        progressDisplay = (
+                          <span className="ml-1 has-text-info">
+                            ({parseInt(String(animatedProgresses[search.id] || search.progress))}%)
+                          </span>
+                        );
+                      }
+                      
+                      // 오류 표시 변수
+                      let errorDisplay = null;
+                      if (search.is_completed === false && search.failed_processes && search.failed_processes > 0) {
+                        errorDisplay = (
+                          <span className="ml-1 has-text-danger">
+                            (오류 {search.failed_processes}개)
+                          </span>
+                        );
+                      }
+                      
+                      // 최종 태그 반환
+                      return (
+                        <span 
+                          key={index} 
+                          className="tag is-medium is-light is-clickable recent-keyword" 
+                          onClick={() => handleRecentSearchClick(search.query)}
+                        >
+                          <span className="search-query">{search.query}</span>
+                          {progressDisplay}
+                          {errorDisplay}
+                        </span>
+                      );
+                    });
                     
                     // 더보기 버튼 요소 - 숨겨진 항목이 2개 이상이고 펼치지 않은 상태일 때만 표시
                     const moreButtonElement = !showAllRecentSearches && hiddenCount >= 2 ? (

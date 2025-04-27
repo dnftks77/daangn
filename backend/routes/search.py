@@ -32,8 +32,8 @@ daangn_scraper = None
 # 처리 중인 모든 백그라운드 태스크 추적
 running_tasks = set()
 
-# 최대 동시 비동기 요청 수를 400개로 제한하는 전역 세마포어
-MAX_CONCURRENT_REQUESTS = 400
+# 최대 동시 비동기 요청 수를 20개로 제한하는 전역 세마포어
+MAX_CONCURRENT_REQUESTS = 20
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
 # 현재 진행 중인 검색 쿼리 추적 (query_text: search_request_id)

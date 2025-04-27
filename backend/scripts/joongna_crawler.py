@@ -11,12 +11,14 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+import sys
 
-# 로그 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# 백엔드 디렉토리를 모듈 경로에 추가 (상위 디렉토리로 가서 중앙화된 로깅 설정을 사용하기 위함)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logging_config import configure_logging
+
+# 로깅 설정 적용
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # 환경 변수 로드

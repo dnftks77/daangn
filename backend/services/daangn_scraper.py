@@ -7,7 +7,6 @@ import logging
 import asyncio
 
 # 로깅 설정
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class ProxyProvider:

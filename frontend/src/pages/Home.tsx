@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { isAuthenticated, logout, getCurrentUser, checkAdminStatus } from '../services/auth';
@@ -6,6 +6,7 @@ import _ from 'lodash';
 import '../App.css';
 import LocationDisplay from '../components/LocationDisplay';
 import SearchProgressBar from '../components/SearchProgressBar';
+import NaverLogoImage from '../assets/naver.png';
 
 // 카테고리 이미지 임포트
 import digitalImg from '../assets/2c0811ac0c0f491039082d246cd41de636d58cd6e54368a0b012c386645d7c66.png';
@@ -203,6 +204,76 @@ function Home() {
 
   // 최근 검색어 애니메이션 효과를 위한 상태
   const [animatedProgresses, setAnimatedProgresses] = useState<Record<string, number>>({});
+
+  // 최근 검색 완료 시 결과 자동 로드를 위한 상태
+  const [previousStatus, setPreviousStatus] = useState<SearchStatus | null>(null);
+
+  // 부분 결과 로드 함수
+  const handleLoadPartialResults = async () => {
+    if (!currentSearchId) return;
+    
+    setLoading(true);
+    
+    try {
+      console.log(`[디버그] 부분 결과 로드 시작: 검색 ID = ${currentSearchId}`);
+      
+      // 현재 검색 상태의 결과를 로드합니다
+      const result = await fetchCompleteResults(
+        currentSearchId,
+        1, // 첫 페이지
+        20, // 페이지 크기
+        sortBy, // 현재 정렬 방식
+        onlyAvailable, // 거래 가능 필터
+        selectedCategory // 선택된 카테고리
+      );
+      
+      // 결과가 있으면 업데이트
+      if (result && result.items.length > 0) {
+        console.log(`[디버그] 부분 결과 로드 성공: ${result.items.length}개 항목`);
+        setSearchResults(result.items);
+        
+        // 페이징 정보 업데이트
+        if (result.pagination) {
+          setHasNextPage(result.pagination.has_next);
+          setPagination(result.pagination);
+        }
+        
+        // 카테고리 정보 업데이트
+        if (result.category_total_items) {
+          setCategoryCount(result.category_total_items);
+        }
+        
+        // 결과가 있으면 스크롤
+        if (result.items.length > 0) {
+          scrollToSearchResultsTop();
+        }
+      }
+    } catch (error) {
+      console.error('[디버그] 부분 결과 로드 중 오류:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 검색 상태 변경 감지 및 100% 완료 시 결과 자동 로드
+  useEffect(() => {
+    // 이전 상태가 있고, 완료되지 않았고, 현재 상태가 완료된 경우
+    if (
+      previousStatus && 
+      !previousStatus.is_completed && 
+      searchStatus && 
+      searchStatus.is_completed && 
+      currentSearchId
+    ) {
+      console.log('[디버그] 검색이 100% 완료되어 최종 결과를 자동으로 로드합니다.');
+      handleLoadPartialResults();
+    }
+    
+    // 현재 상태를 이전 상태로 저장
+    if (searchStatus) {
+      setPreviousStatus(searchStatus);
+    }
+  }, [searchStatus]);
 
   // 애니메이션 처리를 위한 useEffect
   useEffect(() => {
@@ -2441,23 +2512,40 @@ function Home() {
                         const hiddenCount = sortedSearches.length - visibleTagsCount;
                         
                         // 각 검색어를 JSX 요소로 변환
-                        const searchElements = visibleSearches.map((search, index) => (
-                          <span 
-                            key={index} 
-                            className="tag is-medium is-light is-clickable recent-keyword" 
-                            onClick={() => searchWithRecent(search.query)}
-                          >
-                            {search.query}
-                            {search.progress !== undefined ? (
-                              search.progress < 100 ? (
-                                <span className="ml-1 has-text-info">({parseInt(String(animatedProgresses[search.id] || search.progress))}%)</span>
-                              ) : ""
-                            ) : null}
-                            {search.is_completed === false && search.failed_processes && search.failed_processes > 0 && (
-                              <span className="ml-1 has-text-danger">오류</span>
-                            )}
-                          </span>
-                        ));
+                        const searchElements = visibleSearches.map((search, index) => {
+                          // 진행률 표시 변수
+                          let progressDisplay = null;
+                          if (search.progress !== undefined && search.progress < 100) {
+                            progressDisplay = (
+                              <span className="ml-1 has-text-info">
+                                ({parseInt(String(animatedProgresses[search.id] || search.progress))}%)
+                              </span>
+                            );
+                          }
+                          
+                          // 오류 표시 변수
+                          let errorDisplay = null;
+                          if (search.is_completed === false && search.failed_processes && search.failed_processes > 0) {
+                            errorDisplay = (
+                              <span className="ml-1 has-text-danger">
+                                (오류 {search.failed_processes}개)
+                              </span>
+                            );
+                          }
+                          
+                          // 최종 태그 반환
+                          return (
+                            <span 
+                              key={index} 
+                              className="tag is-medium is-light is-clickable recent-keyword" 
+                              onClick={() => searchWithRecent(search.query)}
+                            >
+                              <span className="search-query">{search.query}</span>
+                              {progressDisplay}
+                              {errorDisplay}
+                            </span>
+                          );
+                        });
                         
                         // 더보기 버튼 요소 - 숨겨진 항목이 2개 이상이고 펼치지 않은 상태일 때만 표시
                         const moreButtonElement = !showAllRecentSearches && hiddenCount >= 2 ? (
@@ -2522,20 +2610,13 @@ function Home() {
                     <span>필터</span>
                   </button>
                   
-                  {(onlyAvailable || sortBy !== 'created_at_desc' || selectedCategory.length > 0) && (
-                    <button 
-                      className="filter-reset-button"
-                      onClick={resetAllFilters}
-                    >
-                      필터 초기화
-                    </button>
-                  )}
+
                 </div>
                 
                 <div>
                   {(onlyAvailable || sortBy !== 'created_at_desc' || selectedCategory.length > 0) && (
                     <button 
-                      className="filter-reset-button"
+                      className="filter-reset-button mobile-only"
                       onClick={resetAllFilters}
                     >
                       필터 초기화
@@ -2802,14 +2883,15 @@ function Home() {
                   </h3>
                 )}
                 
-                {loading && searchResults.length === 0 ? (
+                {loading ? (
                   <div className="py-5">
-                    {/* 검색 진행률 표시 - 초기 로딩 시 */}
+                    {/* 검색 진행률 표시 - 로딩 중에는 항상 표시 */}
                     {searchMode === 'new' && (
                       <SearchProgressBar 
                         searchId={currentSearchId} 
                         searchTerm={searchTerm}
                         isCompleted={searchStatus?.is_completed}
+                        onLoadPartialResults={handleLoadPartialResults}
                       />
                     )}
                     
@@ -2836,6 +2918,7 @@ function Home() {
                         searchId={currentSearchId} 
                         searchTerm={searchTerm}
                         isCompleted={searchStatus?.is_completed}
+                        onLoadPartialResults={handleLoadPartialResults}
                       />
                     )}
                     
@@ -2989,10 +3072,22 @@ function Home() {
                     )}
                   </div>
                 ) : (
-                  <div className="has-text-centered is-flex is-justify-content-center is-align-items-center" style={{ height: "200px" }}>
-                    <h3 className="has-text-weight-bold" style={{ fontSize: "1.2rem" }}>
-                      <strong>아무것도 없어요</strong>
-                    </h3>
+                  <div>
+                    {/* 검색 진행률 표시 - 결과가 없는 경우에도 표시 */}
+                    {searchMode === 'new' && (
+                      <SearchProgressBar 
+                        searchId={currentSearchId} 
+                        searchTerm={searchTerm}
+                        isCompleted={searchStatus?.is_completed}
+                        onLoadPartialResults={handleLoadPartialResults}
+                      />
+                    )}
+                    
+                    <div className="has-text-centered is-flex is-justify-content-center is-align-items-center" style={{ height: "200px" }}>
+                      <h3 className="has-text-weight-bold" style={{ fontSize: "1.2rem" }}>
+                        <strong>아무것도 없어요</strong>
+                      </h3>
+                    </div>
                   </div>
                 )}
               </div>

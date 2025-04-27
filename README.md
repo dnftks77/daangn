@@ -22,6 +22,39 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 python supabase_explorer.py
 ```
 
+## 환경 설정
+
+### 로깅 설정
+- 로깅 레벨은 환경 변수 `ENV`에 따라 자동으로 설정됩니다.
+- 개발 환경(`ENV=development`): 모든 로그가 출력됩니다. (DEBUG 레벨)
+- 프로덕션 환경(`ENV=production`): 경고 및 오류 로그만 출력됩니다. (WARNING 레벨)
+
+```bash
+# 개발 환경 (기본값)
+export ENV=development
+
+# 프로덕션 환경
+export ENV=production
+```
+
+### 도커 환경 설정
+
+#### 개발 환경 (로컬)
+개발 환경에서는 모든 디버그 로그를 출력합니다:
+
+```bash
+# 개발 환경에서 실행
+docker-compose up
+```
+
+#### 프로덕션 환경
+프로덕션 환경에서는 경고 및 오류 로그만 출력합니다:
+
+```bash
+# 프로덕션 환경에서 실행
+docker-compose -f docker-compose.prod.yml up -d
+```
+
 ## 출력 결과
 
 스크립트를 실행하면 다음과 같은 정보가 표시됩니다:

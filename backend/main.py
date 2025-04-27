@@ -2,6 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
+import logging
+from logging_config import configure_logging
+
+# 로깅 설정 적용
+configure_logging()
+logger = logging.getLogger("main")
 
 # 라우트 import
 from routes import auth, users, search, trend
@@ -11,6 +17,7 @@ load_dotenv()
 
 # 환경 설정
 ENV = os.getenv("ENV", "development")
+logger.info(f"환경: {ENV}")
 
 # DB 설정
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -64,4 +71,5 @@ if __name__ == "__main__":
     # 서버 포트 설정 (Cloud Run은 PORT 환경 변수를 사용)
     port = int(os.getenv("PORT", "8080"))
     
+    logger.info(f"서버 시작: http://0.0.0.0:{port}")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload) 

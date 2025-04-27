@@ -9,8 +9,7 @@ from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 
-# 로깅 설정
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# 로깅 설정 (중앙화된 설정을 사용하도록 변경)
 logger = logging.getLogger(__name__)
 
 # 한국 시간대 설정
@@ -845,7 +844,7 @@ class DBService:
         finally:
             self.close_session()
     
-    async def get_place_params(self, id_min: int = 1, id_max: int = 3000) -> List[Dict]:
+    async def get_place_params(self, id_min: int = 1, id_max: int = 10000) -> List[Dict]:
         """place_list 테이블에서 from_area가 null이 아니고 ID가 지정된 범위 내인 레코드의 param 값을 가져옵니다"""
         try:
             session = self.get_session()

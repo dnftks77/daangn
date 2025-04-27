@@ -17,12 +17,14 @@ interface SearchProgressBarProps {
   searchId: string | null;
   searchTerm: string;
   isCompleted?: boolean;
+  onLoadPartialResults?: () => void;
 }
 
 const SearchProgressBar: React.FC<SearchProgressBarProps> = ({ 
   searchId, 
   searchTerm, 
-  isCompleted = false
+  isCompleted = false,
+  onLoadPartialResults
 }) => {
   const [searchStatus, setSearchStatus] = useState<SearchStatus | null>(null);
   const [animatedPercentage, setAnimatedPercentage] = useState<number>(0);
@@ -110,7 +112,29 @@ const SearchProgressBar: React.FC<SearchProgressBarProps> = ({
     };
   }, [searchId, internalCompleted]);
 
-  if (!searchId) return null;
+  // 검색 ID가 없어도 진행 중인 상태 표시
+  if (!searchId) {
+    return (
+      <div className="notification is-info is-light mb-4">
+        <div className="is-flex is-align-items-center">
+          <progress 
+            className="progress is-primary" 
+            value="0" 
+            max="100"
+            style={{ 
+              flexGrow: 1, 
+              marginRight: '10px',
+              transition: 'value 0.3s ease'
+            }}
+          ></progress>
+          <span className="has-text-weight-bold">0%</span>
+        </div>
+        <p className="is-size-7 mt-1">
+          "{searchTerm}" 검색이 시작되고 있습니다...
+        </p>
+      </div>
+    );
+  }
 
   // 완료된 경우 100%로 표시
   const percentage = internalCompleted ? 100 : (animatedPercentage || 0);
@@ -126,34 +150,68 @@ const SearchProgressBar: React.FC<SearchProgressBarProps> = ({
       return "검색이 진행 중입니다...";
     }
     
-    const { completed_processes, total_items_found } = searchStatus;
+    const { completed_processes, total_items_found, failed_processes = 0 } = searchStatus;
     // place_params_count가 있으면 이를 사용하고, 없으면 total_processes 사용
     const totalCount = searchStatus.place_params_count || searchStatus.total_processes;
-    return `검색 중 (${completed_processes}/${totalCount} 완료, ${total_items_found}개 항목 발견)`;
+    
+    // 오류 표시 추가
+    const errorText = failed_processes > 0 
+      ? ` <span class="has-text-danger">(오류 ${failed_processes}개)</span>` 
+      : '';
+    
+    return (
+      <span dangerouslySetInnerHTML={{ 
+        __html: `검색 중 (${completed_processes}/${totalCount} 완료, ${total_items_found}개 항목 발견)${errorText}` 
+      }} />
+    );
+  };
+  
+  // 부분 결과 불러오기 버튼 클릭 핸들러
+  const handleLoadPartialResults = () => {
+    if (onLoadPartialResults) {
+      onLoadPartialResults();
+    }
   };
 
   return (
     <div className={`notification ${internalCompleted ? 'is-success' : 'is-info'} is-light mb-4`}>
       {!internalCompleted ? (
-        <div className="is-flex is-align-items-center">
-          <progress 
-            className="progress is-primary" 
-            value={displayPercentage} 
-            max="100"
-            style={{ 
-              flexGrow: 1, 
-              marginRight: '10px',
-              transition: 'value 0.3s ease'
-            }}
-          ></progress>
-          <span className="has-text-weight-bold">{displayPercentage}%</span>
-        </div>
-      ) : null}
-      <p className={`${internalCompleted ? 'has-text-weight-bold' : 'is-size-7 mt-1'}`}>
-        {getProgressText()}
-      </p>
+        <>
+          <div className="is-flex is-align-items-center">
+            <progress 
+              className="progress is-primary" 
+              value={displayPercentage} 
+              max="100"
+              style={{ 
+                flexGrow: 1, 
+                marginRight: '10px',
+                transition: 'value 0.3s ease'
+              }}
+            ></progress>
+            <span className="has-text-weight-bold">{displayPercentage}%</span>
+          </div>
+          <div className="is-flex is-justify-content-space-between is-align-items-center mt-1">
+            <p className="is-size-7">
+              {getProgressText()}
+            </p>
+            {searchStatus && searchStatus.total_items_found > 0 && !internalCompleted && (
+              <button 
+                onClick={handleLoadPartialResults} 
+                className="button is-primary is-small"
+                style={{ fontSize: '0.75rem', height: 'auto', padding: '0.25rem 0.5rem' }}
+              >
+                {displayPercentage}% 수집된 결과 불러오기
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="has-text-weight-bold">
+          {getProgressText()}
+        </p>
+      )}
     </div>
   );
 };
 
-export default SearchProgressBar; 
+export default SearchProgressBar;

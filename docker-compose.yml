@@ -29,6 +29,7 @@ services:
     volumes:
       - ./backend:/app
     environment:
+      - ENV=development
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=postgres
