@@ -50,7 +50,7 @@ curl -v -x http://52c4c4c031:JoSu04g@154.83.44.51:4444 http://httpbin.org/ip
 
 2. gcp cloud sql 에 있는 daangn 데이터베이스 삭제후, 로컬백업한걸로 다시 제대로 생성.
 
-3. 이 명령어로 curl -X POST https://daangn-backend-917674470394.asia-northeast1.run.app/api/register -H "Content-Type: application/json" -d '{"username":"testuser123", "password":"testpassword123"}' | cat 테스트까지해서 정상적으로 되늰지 확인.
+3. 이 명령어로 curl -X POST https://daangn-backend-917674470394.asia-northeast3.run.app/api/register -H "Content-Type: application/json" -d '{"username":"testuser123", "password":"testpassword123"}' | cat 테스트까지해서 정상적으로 되늰지 확인.
 
 4. 오류시 백엔드 수정하고 gcp cloud run 에 배포.
 
@@ -58,4 +58,4 @@ curl -v -x http://52c4c4c031:JoSu04g@154.83.44.51:4444 http://httpbin.org/ip
 
 
 
-cd backend && gcloud run deploy daangn-backend --source . --region asia-northeast1
+cd backend && gcloud run deploy daangn-backend --source . --region asia-northeast3
